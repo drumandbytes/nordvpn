@@ -1,0 +1,75 @@
+name: Validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: '.'
+
+      - uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+
+  smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        id: build
+        with:
+          context: .
+          load: true
+          tags: nordvpn:smoke-test
+
+      # No token, no capabilities, no meshnet/connect — just proves the
+      # entrypoint doesn't crash the container outright (nordvpnd starts,
+      # `nordvpn status` responds) with nothing configured. This is exactly
+      # the scenario that shipped broken before entrypoint.sh stopped
+      # letting a failed login/connect/meshnet command kill the daemon —
+      # see the "fix: don't let a failed login/connect/meshnet command
+      # kill the daemon" commit for the real-world incident that prompted
+      # this test.
+      - name: Container survives with no config
+        run: |
+          docker run -d --name smoke-test nordvpn:smoke-test
+          sleep 5
+          if [ "$(docker inspect -f '{{.State.Running}}' smoke-test)" != "true" ]; then
+            echo "Container exited early with nothing configured:"
+            docker logs smoke-test
+            exit 1
+          fi
+          docker exec smoke-test nordvpn status
+          docker rm -f smoke-test
+
+  trivy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: nordvpn:trivy-scan
+
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: nordvpn:trivy-scan
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
