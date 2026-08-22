@@ -28,7 +28,7 @@ jobs:
       - uses: docker/metadata-action@v5
         id: meta
         with:
-          images: ghcr.io/drumandbytes/nordvpn-meshnet
+          images: ghcr.io/drumandbytes/nordvpn
           tags: |
             type=raw,value=latest
             type=raw,value={{date 'YYYYMMDD'}}

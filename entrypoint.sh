@@ -16,16 +16,25 @@ if [ -n "$NORDVPN_TOKEN" ]; then
   nordvpn login --token "$NORDVPN_TOKEN"
 fi
 
-nordvpn set meshnet on
+# Everything below is opt-in — this image is a plain NordVPN client, usable
+# for a regular VPN tunnel, Meshnet, or both at once. Nothing is assumed.
 
-if [ -n "$NORDVPN_NICKNAME" ]; then
-  nordvpn meshnet set nickname "$NORDVPN_NICKNAME"
+if [ -n "$NORDVPN_FIREWALL" ]; then
+  nordvpn set firewall "$NORDVPN_FIREWALL"
 fi
 
-# Off by default: we're not routing all pod egress through a NordVPN exit
-# server (no `nordvpn connect`), so the killswitch would otherwise block the
-# sidecar's normal LAN/internet traffic (metadata lookups, DNS). Cilium
-# NetworkPolicy governs the pod's normal egress instead.
-nordvpn set firewall "${NORDVPN_FIREWALL:-off}"
+if [ -n "${NORDVPN_CONNECT+set}" ]; then
+  # Bare `nordvpn connect` (empty value) picks the recommended server.
+  # A value can be a country, city, server, or group — anything the CLI's
+  # own `connect` argument accepts.
+  nordvpn connect ${NORDVPN_CONNECT}
+fi
+
+if [ "$NORDVPN_MESHNET" = "on" ]; then
+  nordvpn set meshnet on
+  if [ -n "$NORDVPN_NICKNAME" ]; then
+    nordvpn meshnet set nickname "$NORDVPN_NICKNAME"
+  fi
+fi
 
 wait "$NORDVPND_PID"

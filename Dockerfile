@@ -3,8 +3,9 @@
 # (bubuntux/nordvpn, MattsTechInfo/Meshnet) are 2-4 years stale, and there's
 # nothing to them beyond "install the official client and run nordvpnd
 # without systemd", so we own it instead. Rebuilt weekly by
-# .github/workflows/build-nordvpn-meshnet.yml, always pulling whatever's
-# current in the "stable" apt channel at build time.
+# .github/workflows/build.yml, always pulling whatever's current in the
+# "stable" apt channel at build time. Works for a regular VPN tunnel,
+# Meshnet, or both — see entrypoint.sh, nothing is enabled by default.
 FROM debian:bookworm-slim
 
 RUN apt-get update \

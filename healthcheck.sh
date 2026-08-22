@@ -1,6 +1,7 @@
 #!/bin/sh
-# Used as a Kubernetes exec livenessProbe. `nordvpn settings` lists feature
-# toggles including a "Meshnet: enabled/disabled" line — verify this grep
-# still matches once running against a real login (CLI output format is
-# unversioned upstream, worth a sanity check on first deploy).
-nordvpn settings | grep -qi "Meshnet: enabled"
+# Used as a Kubernetes exec livenessProbe. Passes if either a regular VPN
+# tunnel is connected or Meshnet is enabled — adjust to just one condition if
+# you're only using this image for one of the two. CLI output format is
+# unversioned upstream, worth a sanity check against a real login.
+nordvpn status | grep -qi "Status: Connected" \
+  || nordvpn settings | grep -qi "Meshnet: enabled"
