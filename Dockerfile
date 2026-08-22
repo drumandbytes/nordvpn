@@ -8,10 +8,15 @@
 # Meshnet, or both — see entrypoint.sh, nothing is enabled by default.
 FROM debian:bookworm-slim
 
+# hadolint ignore=DL3008
+# Deliberately not pinning package versions — the entire point of this
+# image is always installing whatever's current in NordVPN's "stable"
+# channel at build time (weekly rebuilds), not a fixed version.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl gnupg ca-certificates \
-    && curl -fsSL https://repo.nordvpn.com/gpg/nordvpn_public.asc \
-       | gpg --dearmor -o /usr/share/keyrings/nordvpn.gpg \
+    && curl -fsSL https://repo.nordvpn.com/gpg/nordvpn_public.asc -o /tmp/nordvpn.asc \
+    && gpg --dearmor -o /usr/share/keyrings/nordvpn.gpg /tmp/nordvpn.asc \
+    && rm /tmp/nordvpn.asc \
     && echo "deb [signed-by=/usr/share/keyrings/nordvpn.gpg] https://repo.nordvpn.com/deb/nordvpn/debian stable main" \
        > /etc/apt/sources.list.d/nordvpn.list \
     && apt-get update \
