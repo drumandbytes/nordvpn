@@ -1,18 +1,25 @@
 # Three-stage build. Full rationale: install the real .deb (and its OS
 # dependencies) on Debian as normal, compile a small Go binary to replace
 # the shell entrypoint (distroless has no shell at all), then copy only
-# the resulting binaries and shared libraries onto distroless/base-debian12
+# the resulting binaries and shared libraries onto distroless/base-debian13
 # for the actual runtime image — no apt, no shell, no package manager in
 # what ships. The exact file list came from inspecting the real package
 # (`dpkg -L nordvpn`) and each binary's real dependency graph (`ldd`)
-# directly, not guessed.
+# directly, not guessed — and re-verified against trixie specifically after
+# moving off bookworm, since library versions/dependency sets genuinely
+# differ between Debian releases (e.g. `ip` needs libselinux/libpcre2 on
+# trixie but not libbsd/libmd, unlike on bookworm).
 #
 # Deliberately not pinning the nordvpn/iptables/iproute2/wireguard-tools
 # package versions in deb-builder — the entire point of this image is
 # always installing whatever's current in NordVPN's "stable" channel at
 # build time (weekly rebuilds), not a fixed version.
+#
+# debian:trixie-slim / distroless/base-debian13 — trixie is current Debian
+# stable (bookworm is oldstable now), so this tracks the same "always
+# current" reasoning as everything else in this file.
 
-FROM debian:bookworm-slim AS deb-builder
+FROM debian:trixie-slim AS deb-builder
 # hadolint ignore=DL3008
 RUN apt-get update \
     && apt-get upgrade -y \
@@ -51,13 +58,14 @@ RUN set -eu; \
     cp -r /var/lib/nordvpn/data/. /staging/var/lib/nordvpn/data/; \
     for lib in \
       libgcc_s.so.1 libsqlite3.so.0 libxtables.so.12 libmnl.so.0 \
-      libnftnl.so.11 libbpf.so.1 libelf.so.1 libbsd.so.0 libcap.so.2 \
-      libz.so.1 libmd.so.0 libnl-genl-3.so.200 libnl-3.so.200 libcap-ng.so.0; \
+      libnftnl.so.11 libbpf.so.1 libelf.so.1 libcap.so.2 libz.so.1 \
+      libnl-genl-3.so.200 libnl-3.so.200 libcap-ng.so.0 \
+      libselinux.so.1 libpcre2-8.so.0; \
     do \
       cp "/lib/${triplet}/${lib}" "/staging/lib/${triplet}/"; \
     done
 
-FROM golang:1.27-bookworm AS go-builder
+FROM golang:1.27-trixie AS go-builder
 WORKDIR /src
 COPY go.mod main.go ./
 RUN CGO_ENABLED=0 go build -o /entrypoint .
@@ -65,7 +73,7 @@ RUN CGO_ENABLED=0 go build -o /entrypoint .
 # Always installing whatever's current, same reasoning as the nordvpn
 # package above — the weekly rebuild is what keeps this patched.
 # hadolint ignore=DL3007
-FROM gcr.io/distroless/base-debian12:latest
+FROM gcr.io/distroless/base-debian13:latest
 
 # Binaries, nordvpn's own bundled libraries, its data files, and every
 # shared library ldd found that distroless doesn't already ship — already

@@ -96,3 +96,11 @@ jobs:
           # exists). Only fail on CVEs we're actually behind on a real fix
           # for — a genuinely actionable finding.
           ignore-unfixed: true
+          # nordvpn/nordvpnd/nordfileshare/norduserd are themselves Go
+          # binaries (discovered via `trivy image --format json`, not
+          # obvious from the outside) — closed-source vendor binaries we
+          # can't recompile, so their embedded stdlib version is entirely
+          # NordVPN's call, not ours. Scanning them just reports CVEs we
+          # have no way to act on. /entrypoint (our own binary, same Go
+          # toolchain as everything else here) stays in scope.
+          skip-files: 'usr/bin/nordvpn,usr/sbin/nordvpnd,usr/lib/nordvpn/nordfileshare,usr/lib/nordvpn/norduserd'
