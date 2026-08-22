@@ -13,6 +13,7 @@
 # build time (weekly rebuilds), not a fixed version.
 
 FROM debian:bookworm-slim AS deb-builder
+# hadolint ignore=DL3008
 RUN apt-get update \
     && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends curl gnupg ca-certificates \
@@ -22,7 +23,6 @@ RUN apt-get update \
     && echo "deb [signed-by=/usr/share/keyrings/nordvpn.gpg] https://repo.nordvpn.com/deb/nordvpn/debian stable main" \
        > /etc/apt/sources.list.d/nordvpn.list \
     && apt-get update \
-    # hadolint ignore=DL3008
     && apt-get install -y --no-install-recommends nordvpn iptables iproute2 wireguard-tools
 
 # Collect everything the final stage needs into one arch-neutral tree,
@@ -57,7 +57,7 @@ RUN set -eu; \
       cp "/lib/${triplet}/${lib}" "/staging/lib/${triplet}/"; \
     done
 
-FROM golang:1.23-bookworm AS go-builder
+FROM golang:1.27-bookworm AS go-builder
 WORKDIR /src
 COPY go.mod main.go ./
 RUN CGO_ENABLED=0 go build -o /entrypoint .

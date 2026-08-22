@@ -1,3 +1,3 @@
 module github.com/drumandbytes/nordvpn
 
-go 1.23
+go 1.27
