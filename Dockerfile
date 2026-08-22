@@ -43,6 +43,18 @@ RUN apt-get update \
 # the multi-platform build failed outright — libcap-ng.so.0 "not found"
 # because it was looking on the wrong architecture's path entirely, not
 # because the file was genuinely missing.)
+#
+# Libraries stage into usr/lib/<triplet>, not lib/<triplet>: distroless's
+# debian13 base has /lib as a symlink to usr/lib (Debian's usrmerge), and
+# BuildKit's COPY refuses to merge a source tree through a symlinked
+# destination component ("cannot copy to non-directory") — a real
+# difference from the legacy `docker build` engine, which tolerates it
+# fine. Shipped broken once already: verified locally with the legacy
+# builder (no buildx available there), which hid this completely; only
+# showed up once CI's actual BuildKit-based build ran it. usr/lib/<triplet>
+# is the real, non-symlinked path on both bookworm and trixie, so this
+# works on either regardless of which one distroless's usrmerge status
+# happens to be for a given release.
 RUN set -eu; \
     case "$(dpkg --print-architecture)" in \
       amd64) triplet=x86_64-linux-gnu ;; \
@@ -51,7 +63,7 @@ RUN set -eu; \
     esac; \
     mkdir -p /staging/usr/bin /staging/usr/sbin \
              /staging/usr/lib/nordvpn /staging/var/lib/nordvpn/data \
-             "/staging/lib/${triplet}"; \
+             "/staging/usr/lib/${triplet}"; \
     cp /usr/bin/nordvpn /usr/bin/wg /staging/usr/bin/; \
     cp /usr/sbin/nordvpnd /usr/sbin/iptables /usr/sbin/ip /staging/usr/sbin/; \
     cp -r /usr/lib/nordvpn/. /staging/usr/lib/nordvpn/; \
@@ -62,7 +74,7 @@ RUN set -eu; \
       libnl-genl-3.so.200 libnl-3.so.200 libcap-ng.so.0 \
       libselinux.so.1 libpcre2-8.so.0; \
     do \
-      cp "/lib/${triplet}/${lib}" "/staging/lib/${triplet}/"; \
+      cp "/lib/${triplet}/${lib}" "/staging/usr/lib/${triplet}/"; \
     done
 
 FROM golang:1.27-trixie AS go-builder
