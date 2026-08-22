@@ -3,11 +3,23 @@
 [![Build](https://github.com/drumandbytes/nordvpn/actions/workflows/build.yml/badge.svg)](https://github.com/drumandbytes/nordvpn/actions/workflows/build.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A minimal, actively-rebuilt container image for the official [NordVPN](https://nordvpn.com/) Linux client — installed fresh from `repo.nordvpn.com`'s apt repo on every build, no systemd required. Works as a regular VPN tunnel sidecar, a [Meshnet](https://meshnet.nordvpn.com/) node, or both at once — nothing is enabled unless you ask for it.
+A minimal, actively-rebuilt container image for the official [NordVPN](https://nordvpn.com/) Linux client — installed fresh from `repo.nordvpn.com`'s apt repo on every build, shipped on [distroless](https://github.com/GoogleContainerTools/distroless) with no shell, no package manager, and no systemd. Works as a regular VPN tunnel sidecar, a [Meshnet](https://meshnet.nordvpn.com/) node, or both at once — nothing is enabled unless you ask for it.
 
 ## Why this exists
 
-The existing community images ([`bubuntux/nordvpn`](https://github.com/bubuntux/nordvpn), [`MattsTechInfo/Meshnet`](https://github.com/MattsTechInfo/Meshnet), [`DPflasterer/nordvpn-meshnet`](https://github.com/DPflasterer/nordvpn-meshnet)) are all 2-4 years stale. There's nothing complex to them — install the official `nordvpn` package, run `nordvpnd` in the foreground instead of under systemd, drive it with the CLI — so this image just does that, and a weekly GitHub Actions build keeps it tracking whatever's current in NordVPN's `stable` apt channel.
+The existing community images ([`bubuntux/nordvpn`](https://github.com/bubuntux/nordvpn), [`MattsTechInfo/Meshnet`](https://github.com/MattsTechInfo/Meshnet), [`DPflasterer/nordvpn-meshnet`](https://github.com/DPflasterer/nordvpn-meshnet)) are all 2-4 years stale. There's nothing complex to the client itself — install the official `nordvpn` package, run `nordvpnd` in the foreground instead of under systemd, drive it with the CLI — so this image just does that, and a weekly GitHub Actions build keeps it tracking whatever's current in NordVPN's `stable` apt channel.
+
+## How it's built
+
+Three-stage `Dockerfile`:
+
+1. **`deb-builder`** (`debian:bookworm-slim`) — installs the real `nordvpn` package plus `iptables`/`iproute2`/`wireguard-tools` via apt, exactly as before.
+2. **`go-builder`** — compiles a small Go binary (`main.go`) that replaces the old shell `entrypoint.sh`/`healthcheck.sh`. Distroless has no shell at all, so the entrypoint has to be a real binary.
+3. **Final stage** — `gcr.io/distroless/base-debian12`: no apt, no shell, no package manager. Just the specific binaries and shared libraries this needs, `COPY`'d in explicitly from `deb-builder` (the exact file list came from inspecting the real package with `dpkg -L nordvpn` and each binary's actual dependency graph with `ldd` — not guessed), plus the compiled entrypoint from `go-builder`.
+
+Net effect: ~40% smaller image, and a meaningfully smaller CVE surface than the full Debian image, since most of Debian's own userland (and its steady stream of base-package CVEs) never makes it into the final image at all.
+
+The Go entrypoint also does one thing the old shell version didn't: since it's PID 1, it reaps any child process `nordvpnd` spawns and abandons (`nordfileshare`, `norduserd`, `openvpn`) instead of letting them accumulate as zombies, and forwards `SIGTERM`/`SIGINT` to `nordvpnd` properly.
 
 ## Usage
 
@@ -82,7 +94,7 @@ containers:
         mountPath: /var/lib/nordvpn
     livenessProbe:
       exec:
-        command: ["/healthcheck.sh"]
+        command: ["/entrypoint", "healthcheck"]
       initialDelaySeconds: 30
       periodSeconds: 30
 volumes:

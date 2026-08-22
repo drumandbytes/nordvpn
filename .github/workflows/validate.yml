@@ -13,13 +13,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ludeeus/action-shellcheck@2.0.0
-        with:
-          scandir: '.'
-
       - uses: hadolint/hadolint-action@v3.1.0
         with:
           dockerfile: Dockerfile
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: gofmt
+        run: |
+          out="$(gofmt -l .)"
+          if [ -n "$out" ]; then
+            echo "Not gofmt-formatted:"
+            echo "$out"
+            exit 1
+          fi
+
+      - run: go vet ./...
 
   smoke-test:
     runs-on: ubuntu-latest
@@ -38,11 +49,12 @@ jobs:
       # No token, no capabilities, no meshnet/connect — just proves the
       # entrypoint doesn't crash the container outright (nordvpnd starts,
       # `nordvpn status` responds) with nothing configured. This is exactly
-      # the scenario that shipped broken before entrypoint.sh stopped
+      # the scenario that shipped broken before the entrypoint stopped
       # letting a failed login/connect/meshnet command kill the daemon —
       # see the "fix: don't let a failed login/connect/meshnet command
       # kill the daemon" commit for the real-world incident that prompted
-      # this test.
+      # this test. Full binary paths throughout — distroless, no PATH
+      # assumptions.
       - name: Container survives with no config
         run: |
           docker run -d --name smoke-test nordvpn:smoke-test
@@ -52,7 +64,10 @@ jobs:
             docker logs smoke-test
             exit 1
           fi
-          docker exec smoke-test nordvpn status
+          docker exec smoke-test /usr/bin/nordvpn status
+          docker exec smoke-test /usr/sbin/iptables --version
+          docker exec smoke-test /usr/sbin/ip -V
+          docker exec smoke-test /usr/bin/wg --version
           docker rm -f smoke-test
 
   trivy:
@@ -73,3 +88,11 @@ jobs:
           image-ref: nordvpn:trivy-scan
           severity: 'CRITICAL,HIGH'
           exit-code: '1'
+          # debian:bookworm-slim's own base packages carry a steady stream of
+          # CRITICAL/HIGH CVEs that are unfixed or fix_deferred upstream —
+          # nothing in this Dockerfile can patch those directly, and failing
+          # CI on them would just make it permanently red until Debian ships
+          # a fix (which the weekly rebuild picks up automatically once it
+          # exists). Only fail on CVEs we're actually behind on a real fix
+          # for — a genuinely actionable finding.
+          ignore-unfixed: true
