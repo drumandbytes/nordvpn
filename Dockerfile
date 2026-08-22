@@ -15,7 +15,7 @@ RUN apt-get update \
     && echo "deb [signed-by=/usr/share/keyrings/nordvpn.gpg] https://repo.nordvpn.com/deb/nordvpn/debian stable main" \
        > /etc/apt/sources.list.d/nordvpn.list \
     && apt-get update \
-    && apt-get install -y --no-install-recommends nordvpn iptables iproute2 \
+    && apt-get install -y --no-install-recommends nordvpn iptables iproute2 wireguard-tools \
     && apt-get purge -y curl gnupg \
     && apt-get autoremove -y \
     && apt-get clean \

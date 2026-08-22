@@ -98,6 +98,20 @@ Put other containers in the same Pod spec to share this one's network — contai
 
 The host kernel needs iptables/netfilter modules available — the NordVPN client uses `iptables` internally to route and firewall its traffic.
 
+### Extracting the WireGuard key (e.g. for gluetun)
+
+NordLynx is WireGuard underneath, so once connected the private key and assigned address are readable with `wg` (included in this image):
+
+```sh
+docker run -d --name nordvpn-keygen \
+  --cap-add=NET_ADMIN --cap-add=NET_RAW --device=/dev/net/tun \
+  -e NORDVPN_TOKEN=<your access token> -e NORDVPN_CONNECT= \
+  ghcr.io/drumandbytes/nordvpn:latest
+docker exec nordvpn-keygen wg show nordlynx private-key
+docker exec nordvpn-keygen ip -4 addr show nordlynx   # the /32 address to pair with it
+docker rm -f nordvpn-keygen
+```
+
 ## Building locally
 
 ```sh
