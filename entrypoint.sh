@@ -7,6 +7,7 @@ set -e
 /usr/sbin/nordvpnd &
 NORDVPND_PID=$!
 
+# shellcheck disable=SC2034 # loop counter, intentionally unused
 for i in $(seq 1 30); do
   nordvpn status >/dev/null 2>&1 && break
   sleep 1
@@ -32,7 +33,10 @@ fi
 if [ -n "${NORDVPN_CONNECT+set}" ]; then
   # Bare `nordvpn connect` (empty value) picks the recommended server.
   # A value can be a country, city, server, or group — anything the CLI's
-  # own `connect` argument accepts.
+  # own `connect` argument accepts — and a two-word value like
+  # "Hungary Budapest" needs to reach the CLI as two separate arguments,
+  # so this word-split is intentional, not a missed quoting bug.
+  # shellcheck disable=SC2086
   nordvpn connect ${NORDVPN_CONNECT} || echo "warning: connect failed (not logged in yet?) — fix interactively with exec" >&2
 fi
 
