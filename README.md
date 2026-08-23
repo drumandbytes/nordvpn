@@ -13,9 +13,9 @@ The existing community images ([`bubuntux/nordvpn`](https://github.com/bubuntux/
 
 Three-stage `Dockerfile`:
 
-1. **`deb-builder`** (`debian:bookworm-slim`) — installs the real `nordvpn` package plus `iptables`/`iproute2`/`wireguard-tools` via apt, exactly as before.
+1. **`deb-builder`** (`debian:trixie-slim`) — installs the real `nordvpn` package plus `iptables`/`iproute2`/`wireguard-tools`/`nftables`/`procps` via apt. Each of the latter two packages was added after something `nordvpnd` shells out to by bare name (PATH lookup) turned out to be missing — `nft` for firewall/routing setup during `connect`, `sysctl` for interface tuning, `ps` for norduserd's own process check — invisible until that specific code path was actually exercised.
 2. **`go-builder`** — compiles a small Go binary (`main.go`) that replaces the old shell `entrypoint.sh`/`healthcheck.sh`. Distroless has no shell at all, so the entrypoint has to be a real binary.
-3. **Final stage** — `gcr.io/distroless/base-debian12`: no apt, no shell, no package manager. Just the specific binaries and shared libraries this needs, `COPY`'d in explicitly from `deb-builder` (the exact file list came from inspecting the real package with `dpkg -L nordvpn` and each binary's actual dependency graph with `ldd` — not guessed), plus the compiled entrypoint from `go-builder`.
+3. **Final stage** — `gcr.io/distroless/base-debian13`: no apt, no shell, no package manager. Just the specific binaries and shared libraries this needs, `COPY`'d in explicitly from `deb-builder` (the exact file list came from inspecting the real package with `dpkg -L nordvpn` and each binary's actual dependency graph with `ldd` — not guessed), plus the compiled entrypoint from `go-builder`.
 
 Net effect: ~40% smaller image, and a meaningfully smaller CVE surface than the full Debian image, since most of Debian's own userland (and its steady stream of base-package CVEs) never makes it into the final image at all.
 
@@ -63,6 +63,7 @@ Generate an access token: NordVPN account → Meshnet (or VPN) → Manual setup 
 | `NORDVPN_MESHNET` | `on` to enable Meshnet. Unset/anything else = off. |
 | `NORDVPN_NICKNAME` | Sets this device's Meshnet nickname (`nordvpn meshnet set nickname`). Only applies when `NORDVPN_MESHNET=on`. Without one, every restart can show up as a new device unless state is persisted. |
 | `NORDVPN_FIREWALL` | `on` or `off`. Unset by default — leaves the client's own default behavior alone. If you're using `NORDVPN_MESHNET=on` **without** `NORDVPN_CONNECT` (Meshnet only, no VPN exit server), you probably want this set to `off` explicitly, since the killswitch otherwise blocks the container's normal non-tunnel traffic. |
+| `NORDVPN_LOG_LEVEL` | `debug`, `info` (default), `warn`, or `error`. `nordvpnd` defaults to its most verbose (`debug`) when it can't find a log-level file to read, which is always true on a fresh container — this just writes one before starting the daemon. |
 
 ### Persisting device/session identity
 
@@ -110,6 +111,8 @@ Put other containers in the same Pod spec to share this one's network — contai
 
 The host kernel needs iptables/netfilter modules available — the NordVPN client uses `iptables` internally to route and firewall its traffic.
 
+**Meshnet specifically needs more than `NET_ADMIN`/`NET_RAW`.** Its routing setup writes `net.ipv4.conf.all.rp_filter`, which stays read-only under Kubernetes/Docker regardless of those capabilities — confirmed directly, including that Docker's own `--sysctl` flag only sets the *initial* value, not ongoing write access. Nothing short of `securityContext.privileged: true` unlocks it. A plain VPN tunnel (`NORDVPN_CONNECT` without `NORDVPN_MESHNET`) doesn't hit this and works fine with just the two capabilities above.
+
 ### Extracting the WireGuard key (e.g. for gluetun)
 
 NordLynx is WireGuard underneath, so once connected the private key and assigned address are readable with `wg` (included in this image):
@@ -129,10 +132,6 @@ docker rm -f nordvpn-keygen
 ```sh
 docker build -t nordvpn .
 ```
-
-## GHCR package visibility
-
-New GHCR packages default to private even in a public repo. If pulls fail with an auth error, flip it once: this repo's Packages sidebar → package settings → Change visibility → Public.
 
 ## License
 
