@@ -72,7 +72,13 @@ func run() {
 	runCLI("declining analytics consent failed", "set", "analytics", "off")
 
 	if token := os.Getenv("NORDVPN_TOKEN"); token != "" {
-		runCLI("login failed", "login", "--token", token)
+		// Retried, unlike everything else here: a single transient timeout
+		// on NordVPN's own credentials API (observed in production, not
+		// hypothetical) permanently fails login for the container's entire
+		// life otherwise, since nothing downstream re-attempts it - meshnet
+		// and connect both just stay in "not logged in" forever regardless
+		// of how patient the liveness probe is.
+		runCLIRetry("login failed", 5, 10*time.Second, "login", "--token", token)
 	}
 
 	// Everything below is opt-in — this image is a plain NordVPN client,
@@ -137,4 +143,19 @@ func runCLI(warnMsg string, args ...string) {
 	if out, err := exec.Command(nordvpnBin, args...).CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: %s: %s\n", warnMsg, strings.TrimSpace(string(out)))
 	}
+}
+
+func runCLIRetry(warnMsg string, attempts int, delay time.Duration, args ...string) {
+	var out []byte
+	var err error
+	for i := 0; i < attempts; i++ {
+		out, err = exec.Command(nordvpnBin, args...).CombinedOutput()
+		if err == nil {
+			return
+		}
+		if i < attempts-1 {
+			time.Sleep(delay)
+		}
+	}
+	fmt.Fprintf(os.Stderr, "warning: %s: %s\n", warnMsg, strings.TrimSpace(string(out)))
 }
