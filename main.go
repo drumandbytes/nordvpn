@@ -189,6 +189,16 @@ func runCLIRetry(warnMsg string, attempts int, delay time.Duration, args ...stri
 		if err == nil {
 			return
 		}
+		// The CLI reports these as failures (non-zero exit), but the
+		// state they're complaining about is exactly what we're retrying
+		// to achieve - observed burning the full retry budget on an
+		// already-satisfied precondition (e.g. re-running on a container
+		// that already logged in from a previous attempt in the same
+		// life) before giving up with a misleading warning.
+		outStr := strings.ToLower(string(out))
+		if strings.Contains(outStr, "already logged in") || strings.Contains(outStr, "already enabled") {
+			return
+		}
 		if i < attempts-1 {
 			time.Sleep(delay)
 		}
