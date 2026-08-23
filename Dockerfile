@@ -42,6 +42,15 @@ RUN apt-get update \
     && apt-get update \
     && apt-get install -y --no-install-recommends nordvpn iptables iproute2 wireguard-tools nftables procps
 
+# Grabbed from the actual base image (not synthesized) so it starts from
+# distroless's own root/nobody/nonroot entries rather than guessing at them.
+# nordvpnd's own postinst creates the `nordvpn` system group (gid 999) when
+# the .deb installs here, but the final stage never runs that install — it
+# only copies files — so without this, norduserd fails every gid lookup
+# with "unknown group nordvpn" at runtime.
+# hadolint ignore=DL3007
+COPY --from=gcr.io/distroless/base-debian13:latest /etc/group /etc/group.distroless-base
+
 # Collect everything the final stage needs into one arch-neutral tree,
 # mirroring its destination layout exactly. This has to happen here, not as
 # hardcoded paths in the final stage's COPY instructions: the actual
@@ -71,9 +80,11 @@ RUN set -eu; \
       arm64) triplet=aarch64-linux-gnu ;; \
       *) echo "unsupported architecture" >&2; exit 1 ;; \
     esac; \
-    mkdir -p /staging/usr/bin /staging/usr/sbin \
+    mkdir -p /staging/usr/bin /staging/usr/sbin /staging/etc \
              /staging/usr/lib/nordvpn /staging/var/lib/nordvpn/data \
              "/staging/usr/lib/${triplet}"; \
+    cp /etc/group.distroless-base /staging/etc/group; \
+    grep '^nordvpn:' /etc/group >> /staging/etc/group; \
     cp /usr/bin/nordvpn /usr/bin/wg /staging/usr/bin/; \
     cp /usr/bin/ps /staging/usr/bin/; \
     cp /usr/sbin/nordvpnd /usr/sbin/iptables /usr/sbin/ip /usr/sbin/nft /usr/sbin/sysctl /staging/usr/sbin/; \
