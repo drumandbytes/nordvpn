@@ -62,6 +62,15 @@ func run() {
 
 	waitForDaemon()
 
+	// Not opt-in, unlike everything below: on first run the CLI blocks any
+	// command behind an interactive "Do you allow us to collect app
+	// performance data? (y/n)" consent prompt, reading from stdin — which
+	// doesn't exist in a detached/non-interactive container (docker run -d,
+	// a Kubernetes pod with no stdin attached). Without this, `login` just
+	// hangs forever with no error, silently. Declining is also the
+	// consistent choice with everything else here defaulting to off.
+	runCLI("declining analytics consent failed", "set", "analytics", "off")
+
 	if token := os.Getenv("NORDVPN_TOKEN"); token != "" {
 		runCLI("login failed", "login", "--token", token)
 	}
