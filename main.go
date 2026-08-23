@@ -123,7 +123,7 @@ func run() {
 	if os.Getenv("NORDVPN_MESHNET") == "on" {
 		runCLI("enabling meshnet failed", "set", "meshnet", "on")
 		if nick := os.Getenv("NORDVPN_NICKNAME"); nick != "" {
-			runCLI("setting nickname failed", "meshnet", "set", "nickname", nick)
+			setNicknameRetry(nick, 6, 5*time.Second)
 		}
 	}
 
@@ -161,6 +161,24 @@ func runCLI(warnMsg string, args ...string) {
 	if out, err := exec.Command(nordvpnBin, args...).CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: %s: %s\n", warnMsg, strings.TrimSpace(string(out)))
 	}
+}
+
+// `meshnet set nickname` returns success even when the device isn't fully
+// registered yet, silently no-oping instead of erroring — so unlike
+// runCLIRetry, success here means actually checking the nickname stuck via
+// `meshnet peer list`, not trusting the set command's own exit code.
+func setNicknameRetry(nick string, attempts int, delay time.Duration) {
+	for i := 0; i < attempts; i++ {
+		_, _ = exec.Command(nordvpnBin, "meshnet", "set", "nickname", nick).CombinedOutput()
+		out, err := exec.Command(nordvpnBin, "meshnet", "peer", "list").CombinedOutput()
+		if err == nil && strings.Contains(string(out), "Nickname: "+nick) {
+			return
+		}
+		if i < attempts-1 {
+			time.Sleep(delay)
+		}
+	}
+	fmt.Fprintf(os.Stderr, "warning: setting nickname %q never took effect after %d attempts\n", nick, attempts)
 }
 
 func runCLIRetry(warnMsg string, attempts int, delay time.Duration, args ...string) {
