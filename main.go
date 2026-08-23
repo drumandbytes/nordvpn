@@ -159,8 +159,22 @@ func waitForDaemon() {
 
 func runCLI(warnMsg string, args ...string) {
 	if out, err := exec.Command(nordvpnBin, args...).CombinedOutput(); err != nil {
+		// The CLI reports these as failures (non-zero exit) even though
+		// the state they're complaining about is exactly the desired one
+		// — observed logging a scary-looking warning for a container that
+		// had actually already succeeded (e.g. meshnet enabled from a
+		// previous run via the persisted state PVC, then this call
+		// redundantly retries the same "on" it's already at).
+		if alreadyDone(out) {
+			return
+		}
 		fmt.Fprintf(os.Stderr, "warning: %s: %s\n", warnMsg, strings.TrimSpace(string(out)))
 	}
+}
+
+func alreadyDone(out []byte) bool {
+	s := strings.ToLower(string(out))
+	return strings.Contains(s, "already logged in") || strings.Contains(s, "already enabled")
 }
 
 // `meshnet set nickname` returns success even when the device isn't fully
