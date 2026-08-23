@@ -43,6 +43,24 @@ func cliOutputContains(subcmd, want string) bool {
 }
 
 func run() {
+	// nordvpnd watches this file at startup to pick a log level, and
+	// defaults to its most verbose ("debug") when the file — and the
+	// /run/nordvpn directory it lives in — don't exist, which they never
+	// do in a fresh container. Every "Response: HTTP/1.1 200 - map[...]"
+	// full-header dump and JSON config blob seen throughout this image's
+	// logs has been at that level. "info" is nordvpnd's own default
+	// outside a container; NORDVPN_LOG_LEVEL overrides it for anyone who
+	// wants debug output back temporarily.
+	level := "info"
+	if l := os.Getenv("NORDVPN_LOG_LEVEL"); l != "" {
+		level = l
+	}
+	if err := os.MkdirAll("/run/nordvpn", 0o755); err != nil {
+		fmt.Fprintln(os.Stderr, "warning: creating /run/nordvpn failed:", err)
+	} else if err := os.WriteFile("/run/nordvpn/loglevel", []byte(level), 0o644); err != nil {
+		fmt.Fprintln(os.Stderr, "warning: setting log level failed:", err)
+	}
+
 	cmd := exec.Command("/usr/sbin/nordvpnd")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
