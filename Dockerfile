@@ -14,6 +14,11 @@
 # it by bare name (PATH lookup) for firewall/routing setup during `connect`,
 # invisible until an actual connect attempt was tried — `iptables` alone
 # wasn't enough, it's a genuinely separate binary/package (nftables).
+# Same story for `sysctl` (net.ipv6/rp_filter tuning during connect/meshnet)
+# and `ps` (norduserd shells out to it for a process check) — both from
+# procps, both invisible until the CLI surface that needs them was actually
+# exercised. `ps` pulled in libproc2.so.0 + libsystemd.so.0 as new shared
+# libraries; libcap.so.2 and libm.so.6 were already covered (nft, base image).
 #
 # Deliberately not pinning the nordvpn/iptables/iproute2/wireguard-tools
 # package versions in deb-builder — the entire point of this image is
@@ -35,7 +40,7 @@ RUN apt-get update \
     && echo "deb [signed-by=/usr/share/keyrings/nordvpn.gpg] https://repo.nordvpn.com/deb/nordvpn/debian stable main" \
        > /etc/apt/sources.list.d/nordvpn.list \
     && apt-get update \
-    && apt-get install -y --no-install-recommends nordvpn iptables iproute2 wireguard-tools nftables
+    && apt-get install -y --no-install-recommends nordvpn iptables iproute2 wireguard-tools nftables procps
 
 # Collect everything the final stage needs into one arch-neutral tree,
 # mirroring its destination layout exactly. This has to happen here, not as
@@ -70,7 +75,8 @@ RUN set -eu; \
              /staging/usr/lib/nordvpn /staging/var/lib/nordvpn/data \
              "/staging/usr/lib/${triplet}"; \
     cp /usr/bin/nordvpn /usr/bin/wg /staging/usr/bin/; \
-    cp /usr/sbin/nordvpnd /usr/sbin/iptables /usr/sbin/ip /usr/sbin/nft /staging/usr/sbin/; \
+    cp /usr/bin/ps /staging/usr/bin/; \
+    cp /usr/sbin/nordvpnd /usr/sbin/iptables /usr/sbin/ip /usr/sbin/nft /usr/sbin/sysctl /staging/usr/sbin/; \
     cp -r /usr/lib/nordvpn/. /staging/usr/lib/nordvpn/; \
     cp -r /var/lib/nordvpn/data/. /staging/var/lib/nordvpn/data/; \
     for lib in \
@@ -79,7 +85,8 @@ RUN set -eu; \
       libnl-genl-3.so.200 libnl-3.so.200 libcap-ng.so.0 \
       libselinux.so.1 libpcre2-8.so.0 \
       libnftables.so.1 libedit.so.2 libjansson.so.4 libgmp.so.10 \
-      libtinfo.so.6 libbsd.so.0 libmd.so.0; \
+      libtinfo.so.6 libbsd.so.0 libmd.so.0 \
+      libproc2.so.0 libsystemd.so.0; \
     do \
       cp "/lib/${triplet}/${lib}" "/staging/usr/lib/${triplet}/"; \
     done
