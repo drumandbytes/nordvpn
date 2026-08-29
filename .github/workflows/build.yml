@@ -3,9 +3,17 @@ name: Build
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+      - '.gitignore'
   schedule:
     - cron: '0 4 * * 1' # Monday 04:00 UTC — picks up whatever's current in NordVPN's apt repo
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
