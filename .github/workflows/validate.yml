@@ -21,28 +21,10 @@ concurrency:
 
 jobs:
   lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7.0.1
-
-      - uses: hadolint/hadolint-action@v3.5.0
-        with:
-          dockerfile: Dockerfile
-
-      - uses: actions/setup-go@v7.0.0
-        with:
-          go-version: '1.27'
-
-      - name: gofmt
-        run: |
-          out="$(gofmt -l .)"
-          if [ -n "$out" ]; then
-            echo "Not gofmt-formatted:"
-            echo "$out"
-            exit 1
-          fi
-
-      - run: go vet ./...
+    uses: drumandbytes/reusable-actions/.github/workflows/go-ci.yml@v1
+    with:
+      go-version: "1.27"
+      dockerfile-path: Dockerfile
 
   smoke-test:
     runs-on: ubuntu-latest
@@ -83,36 +65,17 @@ jobs:
           docker rm -f smoke-test
 
   trivy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7.0.1
-
-      - uses: docker/setup-buildx-action@v4.3.0
-
-      - uses: docker/build-push-action@v7.3.0
-        with:
-          context: .
-          load: true
-          tags: nordvpn:trivy-scan
-
-      - uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: nordvpn:trivy-scan
-          severity: 'CRITICAL,HIGH'
-          exit-code: '1'
-          # debian:bookworm-slim's own base packages carry a steady stream of
-          # CRITICAL/HIGH CVEs that are unfixed or fix_deferred upstream —
-          # nothing in this Dockerfile can patch those directly, and failing
-          # CI on them would just make it permanently red until Debian ships
-          # a fix (which the weekly rebuild picks up automatically once it
-          # exists). Only fail on CVEs we're actually behind on a real fix
-          # for — a genuinely actionable finding.
-          ignore-unfixed: true
-          # nordvpn/nordvpnd/nordfileshare/norduserd are themselves Go
-          # binaries (discovered via `trivy image --format json`, not
-          # obvious from the outside) — closed-source vendor binaries we
-          # can't recompile, so their embedded stdlib version is entirely
-          # NordVPN's call, not ours. Scanning them just reports CVEs we
-          # have no way to act on. /entrypoint (our own binary, same Go
-          # toolchain as everything else here) stays in scope.
-          skip-files: 'usr/bin/nordvpn,usr/sbin/nordvpnd,usr/lib/nordvpn/nordfileshare,usr/lib/nordvpn/norduserd'
+    uses: drumandbytes/reusable-actions/.github/workflows/security-scan.yml@v1
+    with:
+      scan-type: image
+      dockerfile: Dockerfile
+      severity: 'CRITICAL,HIGH'
+      ignore-unfixed: true
+      # nordvpn/nordvpnd/nordfileshare/norduserd are themselves Go binaries
+      # (discovered via `trivy image --format json`, not obvious from the
+      # outside) — closed-source vendor binaries we can't recompile, so
+      # their embedded stdlib version is entirely NordVPN's call, not ours.
+      # Scanning them just reports CVEs we have no way to act on.
+      # /entrypoint (our own binary, same Go toolchain as everything else
+      # here) stays in scope.
+      skip-files: 'usr/bin/nordvpn,usr/sbin/nordvpnd,usr/lib/nordvpn/nordfileshare,usr/lib/nordvpn/norduserd'
