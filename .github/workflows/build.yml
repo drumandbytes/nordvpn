@@ -7,6 +7,13 @@ on:
       - '**.md'
       - 'LICENSE'
       - '.gitignore'
+      # CI-config-only changes (Dependabot config, the auto-merge/validate
+      # workflows themselves) don't touch the image - no need for a full
+      # multi-arch build+push on every one of them. build.yml is explicitly
+      # re-included: a change to the workflow that actually builds and
+      # pushes the image should still be exercised for real, not skipped.
+      - '.github/**'
+      - '!.github/workflows/build.yml'
   schedule:
     - cron: '0 4 * * 1' # Monday 04:00 UTC — picks up whatever's current in NordVPN's apt repo
   workflow_dispatch:
