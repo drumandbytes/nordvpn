@@ -5,6 +5,9 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    commit-message:
+      prefix: "fix"
+      include: "scope"
 
   # Base image bumps (golang:1.27-trixie, debian:trixie-slim). The NordVPN
   # package itself is deliberately unpinned in the Dockerfile (always
@@ -14,6 +17,9 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    commit-message:
+      prefix: "fix"
+      include: "scope"
 
   # Grouped into a single PR so related action bumps land together rather than
   # as a stream of separate PRs. Auto-merge handles them once CI passes.
@@ -24,3 +30,7 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+    # `ci(deps):` — CI-only, no image change, so no release.
+    commit-message:
+      prefix: "ci"
+      include: "scope"

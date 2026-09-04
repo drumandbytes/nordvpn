@@ -1,0 +1,62 @@
+name: NordVPN version check
+
+# NordVPN publishes new Linux clients to their apt "stable" channel with no
+# feed or tag we can watch. This polls the Packages index daily and, on a new
+# version, opens a `fix(nordvpn):` PR bumping .nordvpn-version — release-please
+# turns that into a patch release, and build.yml publishes the pinned image.
+# (The Dockerfile still installs unpinned; .nordvpn-version is the release
+# trigger + the record of which client each vX.Y.Z shipped.)
+
+on:
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: nordvpn-version-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v3.2.0
+        id: app-token
+        with:
+          app-id: 4773076
+          private-key: ${{ secrets.AUTOMATION_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v7
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - id: check
+        run: |
+          LATEST=$(curl -fsSL https://repo.nordvpn.com/deb/nordvpn/debian/dists/stable/main/binary-amd64/Packages \
+            | awk '/^Package: nordvpn$/{p=1;next} /^$/{p=0} p&&/^Version:/{print $2}' \
+            | sort -V | tail -n1)
+          CURRENT=$(cat .nordvpn-version)
+          echo "latest=$LATEST" >> "$GITHUB_OUTPUT"
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+          echo "NordVPN client: $CURRENT -> $LATEST"
+          [ -n "$LATEST" ] || { echo "::error::could not parse a version"; exit 1; }
+
+      - if: steps.check.outputs.latest != steps.check.outputs.current
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          LATEST: ${{ steps.check.outputs.latest }}
+        run: |
+          BRANCH="nordvpn-client/${LATEST}"
+          git config user.name "dnb-robot[bot]"
+          git config user.email "4773076+dnb-robot[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          echo "$LATEST" > .nordvpn-version
+          git commit -am "fix(nordvpn): update client to ${LATEST}"
+          git push -u origin "$BRANCH"
+          gh pr create --base main --head "$BRANCH" \
+            --title "fix(nordvpn): update client to ${LATEST}" \
+            --body "NordVPN published Linux client \`${LATEST}\` to the apt stable channel. Merging cuts a patch release + rebuilds the pinned image."

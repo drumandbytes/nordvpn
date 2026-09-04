@@ -3,6 +3,8 @@ name: Build
 on:
   push:
     branches: [main]
+    # Release-please tags — publishes the immutable semver image (see the meta step).
+    tags: ['v*.*.*']
     paths-ignore:
       - '**.md'
       - 'LICENSE'
@@ -12,6 +14,7 @@ on:
       # multi-arch build+push on every one of them. build.yml is explicitly
       # re-included: a change to the workflow that actually builds and
       # pushes the image should still be exercised for real, not skipped.
+      # (Tag pushes ignore path filters, so releases always build.)
       - '.github/**'
       - '!.github/workflows/build.yml'
   schedule:
@@ -47,8 +50,12 @@ jobs:
         with:
           images: ghcr.io/drumandbytes/nordvpn
           tags: |
-            type=raw,value=latest
-            type=raw,value={{date 'YYYYMMDD'}}
+            # main pushes + the weekly cron: rolling tags
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value={{date 'YYYYMMDD'}},enable={{is_default_branch}}
+            # release-please tags: immutable pinned versions
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
 
       - uses: docker/build-push-action@v7.3.0
         id: build
