@@ -25,8 +25,12 @@ Image tags:
 | `chore:` `docs:` `ci:` `test:` `refactor:` | no release | `docs: update the README` |
 
 Dependabot prefixes Go and base-image bumps `fix(deps):` (→ patch release + new
-pinned image) and action bumps `ci(deps):` (CI only, no release). Weekly apt
-refreshes of the NordVPN client don't touch source, so they only move the rolling
-tags — never a new `vX.Y.Z`.
+pinned image) and action bumps `ci(deps):` (CI only, no release).
+
+`nordvpn-version.yml` polls NordVPN's apt channel daily; a new client version
+opens a `fix(nordvpn):` PR bumping `.nordvpn-version` → patch release. That file
+is the record of which client each `vX.Y.Z` shipped (the Dockerfile itself still
+installs whatever's current at build time). The weekly `build.yml` cron keeps the
+rolling `:latest` / `:YYYYMMDD` tags fresh with Debian security patches.
 
 Don't hand-edit `CHANGELOG.md` or tags — release-please owns them.
