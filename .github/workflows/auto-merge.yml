@@ -23,3 +23,6 @@ jobs:
     # pull_request, so it can't gate a PR merge either way.
     if: github.event.workflow_run.conclusion == 'success'
     uses: drumandbytes/reusable-actions/.github/workflows/auto-merge.yml@v1
+    with:
+      # release-please's own PR; patch bumps auto-merge, minor/major don't.
+      patch-only-authors: '["dnb-robot[bot]"]'
