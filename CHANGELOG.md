@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/drumandbytes/nordvpn/compare/v1.0.1...v1.0.2) (2026-09-07)
+
+
+### Bug Fixes
+
+* **nordvpn:** update client to 5.4.0 ([#14](https://github.com/drumandbytes/nordvpn/issues/14)) ([4323d78](https://github.com/drumandbytes/nordvpn/commit/4323d784e873e9c24da46ee726e56a11fe61836a))
+
 ## [1.0.1](https://github.com/drumandbytes/nordvpn/compare/v1.0.0...v1.0.1) (2026-09-06)
 
 
