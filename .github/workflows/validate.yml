@@ -26,6 +26,16 @@ jobs:
       go-version: "1.27"
       dockerfile-path: Dockerfile
 
+  # #21/#23: the GHCR prune script deleted reachable attestation data once
+  # already because its reachability algorithm went untested. This is what
+  # should have caught that before it ran against the real package -- no
+  # gh, no docker, no network, just the graph logic against a fixed fixture.
+  prune-ghcr-self-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - run: ./scripts/prune-ghcr.sh --self-test
+
   smoke-test:
     runs-on: ubuntu-latest
     steps:
