@@ -17,8 +17,11 @@ on:
       # (Tag pushes ignore path filters, so releases always build.)
       - '.github/**'
       - '!.github/workflows/build.yml'
-  schedule:
-    - cron: '0 4 * * 1' # Monday 04:00 UTC — picks up whatever's current in NordVPN's apt repo
+  # No cron. The weekly rebuild used to live here and published images that only
+  # `latest` and a date tag could name — unselectable by a semver constraint and
+  # recorded by no release. upstream-check.yml now watches the actual inputs
+  # (client version, base image digests, apt dependency versions) and opens a PR
+  # when one moves, so the same drift arrives as a normal commit-driven release.
   workflow_dispatch:
 
 concurrency:
@@ -50,9 +53,8 @@ jobs:
         with:
           images: ghcr.io/drumandbytes/nordvpn
           tags: |
-            # main pushes + the weekly cron: rolling tags
+            # main pushes: the rolling convenience tag only
             type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value={{date 'YYYYMMDD'}},enable={{is_default_branch}}
             # release-please tags: immutable pinned versions
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
