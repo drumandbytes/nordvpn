@@ -1,0 +1,9 @@
+apt:iproute2=6.15.0-1
+apt:iptables=1.8.11-2
+apt:nftables=1.1.3-1
+apt:procps=2:4.0.4-9
+apt:wireguard-tools=1.0.20210914-3
+image:debian:trixie-slim=sha256:d7e12182ce18b85b93007c1dedf31f2d29e01ccf3182cc4017c709b6259bc132
+image:gcr.io/distroless/base-debian13:latest=sha256:9ef50bca108839d5986e4d84b7f7b2d79024c9293b7c35b162c6c55485bd5868
+image:golang:1.27-trixie=sha256:9baa6b4187bbb98d240372a8a235ac0bb6b5ddd52bba1431dc2f7c0705862728
+nordvpn=5.4.0

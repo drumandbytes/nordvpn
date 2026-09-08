@@ -1,0 +1,85 @@
+name: Upstream check
+
+# Replaces both the old daily nordvpn-version check and build.yml's weekly cron.
+#
+# The old split had a gap. The version check watched one input (the nordvpn
+# client) and produced a proper release; the weekly timer caught everything else
+# -- Debian security updates, a moved distroless :latest -- but published images
+# named only `latest` and a date, which no semver constraint can select and no
+# release records.
+#
+# This watches every input instead (scripts/upstream-lock.sh) and opens a PR when
+# any of them moves. release-please turns that into a patch release and build.yml
+# publishes the semver image, so every published image is commit-driven. Nothing
+# rebuilds on a calendar: an unchanged week produces no PR and no release.
+
+on:
+  schedule:
+    - cron: "0 5 * * *" # daily; only opens a PR when something actually changed
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: upstream-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: app-token
+        with:
+          client-id: ${{ secrets.DNB_ROBOT_CLIENT_ID }}
+          private-key: ${{ secrets.AUTOMATION_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v7
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      # imagetools resolves the base image digests without pulling the images.
+      - uses: docker/setup-buildx-action@v4.3.0
+
+      - id: check
+        run: |
+          ./scripts/upstream-lock.sh > /tmp/upstream.lock.new
+          echo "--- resolved upstream inputs ---"
+          cat /tmp/upstream.lock.new
+
+          # A missing lock file is the first run, not an error: the diff below
+          # treats it as changed and the PR seeds it.
+          if [ -f upstream.lock ] && diff -q upstream.lock /tmp/upstream.lock.new >/dev/null; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "nothing moved upstream"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            [ -f upstream.lock ] && diff upstream.lock /tmp/upstream.lock.new || true
+          fi
+
+          # The client version drives the PR title -- it is the change a human
+          # actually cares about when it is the one that moved.
+          awk -F= '/^nordvpn=/{print "client="$2}' /tmp/upstream.lock.new >> "$GITHUB_OUTPUT"
+
+      - if: steps.check.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          CLIENT: ${{ steps.check.outputs.client }}
+        run: |
+          BRANCH="upstream/$(date -u +%Y%m%d-%H%M%S)"
+          git config user.name "dnb-robot[bot]"
+          git config user.email "4773076+dnb-robot[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+
+          cp /tmp/upstream.lock.new upstream.lock
+          echo "$CLIENT" > .nordvpn-version
+
+          git add upstream.lock .nordvpn-version
+          git commit -m "fix(deps): upstream inputs changed (client ${CLIENT})"
+          git push -u origin "$BRANCH"
+
+          gh pr create --base main --head "$BRANCH" \
+            --title "fix(deps): upstream inputs changed (client ${CLIENT})" \
+            --body "$(printf 'One or more upstream inputs moved. Merging cuts a patch release and rebuilds the image.\n\n```diff\n%s\n```\n' "$(git diff HEAD~1 -- upstream.lock | tail -n +5)")"
