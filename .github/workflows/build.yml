@@ -21,14 +21,88 @@ on:
   # recorded by no release. upstream-check.yml now watches the actual inputs
   # (client version, base image digests, apt dependency versions) and opens a PR
   # when one moves, so the same drift arrives as a normal commit-driven release.
-  workflow_dispatch:
+  # No workflow_dispatch. The tags now come exclusively from type=semver, so a
+  # manual run off a branch resolves to no tags at all -- the matrix would push
+  # two untagged images and the merge job would call `imagetools create` with no
+  # -t and fail. A release tag is the only ref this workflow can do anything
+  # useful with; validate.yml is where a build is exercised outside one.
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # One job per architecture, each on a runner of that architecture. arm64 was
+  # previously cross-built under QEMU on an amd64 runner, which dominated build
+  # time -- this image installs a full apt dependency tree and compiles Go, and
+  # emulating all of that is far slower than running it natively. Public repos
+  # get ubuntu-24.04-arm at no cost, so the emulation bought nothing.
+  #
+  # Neither job tags anything. Each pushes an untagged, digest-addressed image
+  # and hands the digest to the merge job, which is what assembles the tags into
+  # a single manifest list. Tagging here would mean two builds racing for the
+  # same tag, with the loser silently discarded.
   build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: docker/setup-buildx-action@v4.3.0
+
+      - uses: docker/login-action@v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Labels only. Tags come from the merge job.
+      - uses: docker/metadata-action@v6.2.0
+        id: meta
+        with:
+          images: ghcr.io/drumandbytes/nordvpn
+
+      - uses: docker/build-push-action@v7.3.0
+        id: build
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=ghcr.io/drumandbytes/nordvpn,push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export the digest for the merge job
+        run: |
+          mkdir -p /tmp/digests
+          # The digest arrives as sha256:<hex>; the bare hex is used as a
+          # filename so the merge job can glob them without parsing.
+          touch "/tmp/digests/${{ steps.build.outputs.digest }}"
+        shell: bash
+
+      - uses: actions/upload-artifact@v6.0.0
+        with:
+          # One artifact per platform, merged by name pattern below. Slashes are
+          # not valid in artifact names.
+          name: digest-${{ strategy.job-index }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # Assembles the per-architecture images into one manifest list and puts the
+  # tags on that. This is the only job that tags, and the only one that attests:
+  # the attestation names the manifest list, which is what a consumer pulls.
+  merge:
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -37,7 +111,11 @@ jobs:
       attestations: write # record the attestation on the repo
 
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/download-artifact@v6.0.0
+        with:
+          path: /tmp/digests
+          pattern: digest-*
+          merge-multiple: true
 
       - uses: docker/setup-buildx-action@v4.3.0
 
@@ -66,20 +144,31 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
-      - uses: docker/build-push-action@v7.3.0
-        id: build
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+      - name: Create the manifest list
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf 'ghcr.io/drumandbytes/nordvpn@%s ' *)
+        shell: bash
 
-      # Signed SLSA build provenance for the pushed image, stored next to it
-      # in GHCR as an OCI referrer. Verify with:
+      # imagetools create does not report the digest of what it just pushed, and
+      # the attestation below needs one. Every tag resolves to the same manifest
+      # list, so read it back from the first.
+      - name: Read back the manifest list digest
+        id: manifest
+        run: |
+          ref=$(jq -r '.tags[0]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          digest=$(docker buildx imagetools inspect "$ref" --format '{{.Manifest.Digest}}')
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "manifest list $ref is $digest"
+        shell: bash
+
+      # Signed SLSA build provenance for the manifest list, stored next to it in
+      # GHCR as an OCI referrer. Verify with:
       #   gh attestation verify oci://ghcr.io/drumandbytes/nordvpn:latest --owner drumandbytes
       - uses: actions/attest-build-provenance@v4.2.2
         with:
           subject-name: ghcr.io/drumandbytes/nordvpn
-          subject-digest: ${{ steps.build.outputs.digest }}
+          subject-digest: ${{ steps.manifest.outputs.digest }}
           push-to-registry: true
