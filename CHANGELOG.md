@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.1](https://github.com/drumandbytes/nordvpn/compare/v1.1.0...v1.1.1) (2026-09-08)
+
+
+### Bug Fixes
+
+* **ci:** make upstream-lock fail loudly instead of writing blanks ([#19](https://github.com/drumandbytes/nordvpn/issues/19)) ([aec7adc](https://github.com/drumandbytes/nordvpn/commit/aec7adce84c1711d56c7ddf2971e0fa73b12316d))
+
+
+### Performance Improvements
+
+* **ci:** build each architecture on its own native runner ([#22](https://github.com/drumandbytes/nordvpn/issues/22)) ([c63d94d](https://github.com/drumandbytes/nordvpn/commit/c63d94d48c402c41a36cf0c22380f8158d3a857d))
+
 ## [1.1.0](https://github.com/drumandbytes/nordvpn/compare/v1.0.2...v1.1.0) (2026-09-08)
 
 
