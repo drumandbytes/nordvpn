@@ -2,21 +2,20 @@ name: Build
 
 on:
   push:
-    branches: [main]
-    # Release-please tags — publishes the immutable semver image (see the meta step).
+    # Release tags only. Every published image is now a release, and exactly one
+    # build produces it.
+    #
+    # main pushes used to build and push too, which meant each change was built
+    # twice -- once for `latest` on merge, once for the semver tags on the
+    # release -- and since apt installs are unpinned those two builds produced
+    # different images from the same commit. Nothing recorded what `latest`
+    # contained. The path filters that used to live here existed to stop that
+    # duplicate build firing on doc and CI edits; with no main-push build there
+    # is nothing to filter.
+    #
+    # Main pushes are still exercised: validate.yml builds the image as a smoke
+    # test on every PR. It just does not publish.
     tags: ['v*.*.*']
-    paths-ignore:
-      - '**.md'
-      - 'LICENSE'
-      - '.gitignore'
-      # CI-config-only changes (Dependabot config, the auto-merge/validate
-      # workflows themselves) don't touch the image - no need for a full
-      # multi-arch build+push on every one of them. build.yml is explicitly
-      # re-included: a change to the workflow that actually builds and
-      # pushes the image should still be exercised for real, not skipped.
-      # (Tag pushes ignore path filters, so releases always build.)
-      - '.github/**'
-      - '!.github/workflows/build.yml'
   # No cron. The weekly rebuild used to live here and published images that only
   # `latest` and a date tag could name — unselectable by a semver constraint and
   # recorded by no release. upstream-check.yml now watches the actual inputs
@@ -52,10 +51,18 @@ jobs:
         id: meta
         with:
           images: ghcr.io/drumandbytes/nordvpn
+          # latest=auto applies `latest` to the semver tag builds only, so it
+          # always names the newest release.
+          #
+          # It used to be applied on main pushes instead, which meant `latest`
+          # and the release tags were different builds of the same commit --
+          # and because apt installs are unpinned, genuinely different images.
+          # 1.0.2 was sha256:0679f53... while latest was sha256:6e36d4c...,
+          # with nothing recording what latest contained. Same failure the date
+          # tags had: a published image no release could name.
+          flavor: |
+            latest=auto
           tags: |
-            # main pushes: the rolling convenience tag only
-            type=raw,value=latest,enable={{is_default_branch}}
-            # release-please tags: immutable pinned versions
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
