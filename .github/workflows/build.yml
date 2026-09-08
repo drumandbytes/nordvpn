@@ -21,7 +21,11 @@ on:
   # recorded by no release. upstream-check.yml now watches the actual inputs
   # (client version, base image digests, apt dependency versions) and opens a PR
   # when one moves, so the same drift arrives as a normal commit-driven release.
-  workflow_dispatch:
+  # No workflow_dispatch. The tags now come exclusively from type=semver, so a
+  # manual run off a branch resolves to no tags at all -- the matrix would push
+  # two untagged images and the merge job would call `imagetools create` with no
+  # -t and fail. A release tag is the only ref this workflow can do anything
+  # useful with; validate.yml is where a build is exercised outside one.
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
