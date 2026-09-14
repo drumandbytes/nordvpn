@@ -5,6 +5,10 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      gomod:
+        patterns:
+          - "*"
     commit-message:
       prefix: "fix"
       include: "scope"
@@ -17,6 +21,10 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      docker:
+        patterns:
+          - "*"
     commit-message:
       prefix: "fix"
       include: "scope"
