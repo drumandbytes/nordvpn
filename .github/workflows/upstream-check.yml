@@ -41,7 +41,7 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
 
       # imagetools resolves the base image digests without pulling the images.
-      - uses: docker/setup-buildx-action@v4.3.0
+      - uses: docker/setup-buildx-action@v4.4.1
 
       - id: check
         run: |
