@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.4](https://github.com/drumandbytes/nordvpn/compare/v1.1.3...v1.1.4) (2026-09-20)
+
+
+### Bug Fixes
+
+* **deps:** upstream inputs changed (client 5.4.0) ([#37](https://github.com/drumandbytes/nordvpn/issues/37)) ([b295f5c](https://github.com/drumandbytes/nordvpn/commit/b295f5c909be5fc75b9d29a454a1c31d0318134b))
+* drop paths-ignore from the workflow hosting the required-check gate ([#35](https://github.com/drumandbytes/nordvpn/issues/35)) ([33508ae](https://github.com/drumandbytes/nordvpn/commit/33508ae6aa6d4a8295973d16cfe923840838c667))
+
 ## [1.1.3](https://github.com/drumandbytes/nordvpn/compare/v1.1.2...v1.1.3) (2026-09-19)
 
 
