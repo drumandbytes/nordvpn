@@ -2,46 +2,20 @@ name: Build
 
 on:
   push:
-    # Release tags only. Every published image is now a release, and exactly one
-    # build produces it.
-    #
-    # main pushes used to build and push too, which meant each change was built
-    # twice -- once for `latest` on merge, once for the semver tags on the
-    # release -- and since apt installs are unpinned those two builds produced
-    # different images from the same commit. Nothing recorded what `latest`
-    # contained. The path filters that used to live here existed to stop that
-    # duplicate build firing on doc and CI edits; with no main-push build there
-    # is nothing to filter.
-    #
-    # Main pushes are still exercised: validate.yml builds the image as a smoke
-    # test on every PR. It just does not publish.
+    # Release tags only: every published image is a release, built once.
+    # validate.yml builds the image on every PR without publishing.
     tags: ['v*.*.*']
-  # No cron. The weekly rebuild used to live here and published images that only
-  # `latest` and a date tag could name — unselectable by a semver constraint and
-  # recorded by no release. upstream-check.yml now watches the actual inputs
-  # (client version, base image digests, apt dependency versions) and opens a PR
-  # when one moves, so the same drift arrives as a normal commit-driven release.
-  # No workflow_dispatch. The tags now come exclusively from type=semver, so a
-  # manual run off a branch resolves to no tags at all -- the matrix would push
-  # two untagged images and the merge job would call `imagetools create` with no
-  # -t and fail. A release tag is the only ref this workflow can do anything
-  # useful with; validate.yml is where a build is exercised outside one.
+  # No cron: upstream-check.yml opens a PR when an input moves.
+  # No workflow_dispatch: tags come only from type=semver, so a branch run
+  # would push untagged images and fail.
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # One job per architecture, each on a runner of that architecture. arm64 was
-  # previously cross-built under QEMU on an amd64 runner, which dominated build
-  # time -- this image installs a full apt dependency tree and compiles Go, and
-  # emulating all of that is far slower than running it natively. Public repos
-  # get ubuntu-24.04-arm at no cost, so the emulation bought nothing.
-  #
-  # Neither job tags anything. Each pushes an untagged, digest-addressed image
-  # and hands the digest to the merge job, which is what assembles the tags into
-  # a single manifest list. Tagging here would mean two builds racing for the
-  # same tag, with the loser silently discarded.
+  # One native job per architecture (QEMU was far slower). Each pushes an
+  # untagged image by digest; only the merge job tags, so builds can't race.
   build:
     strategy:
       fail-fast: false
@@ -85,25 +59,20 @@ jobs:
       - name: Export the digest for the merge job
         run: |
           mkdir -p /tmp/digests
-          # The digest arrives as sha256:<hex>; the bare hex is used as a
-          # filename so the merge job can glob them without parsing.
-          # upload-artifact rejects ":" in paths, so strip the prefix here.
+          # upload-artifact rejects ':', so the bare hex digest is the filename.
           digest='${{ steps.build.outputs.digest }}'
           touch "/tmp/digests/${digest#sha256:}"
         shell: bash
 
       - uses: actions/upload-artifact@v7.0.1
         with:
-          # One artifact per platform, merged by name pattern below. Slashes are
-          # not valid in artifact names.
+          # One artifact per platform; slashes aren't valid in names.
           name: digest-${{ strategy.job-index }}
           path: /tmp/digests/*
           if-no-files-found: error
           retention-days: 1
 
-  # Assembles the per-architecture images into one manifest list and puts the
-  # tags on that. This is the only job that tags, and the only one that attests:
-  # the attestation names the manifest list, which is what a consumer pulls.
+  # Assembles the per-arch images into one manifest list, then tags and attests it.
   merge:
     needs: build
     runs-on: ubuntu-latest
@@ -131,15 +100,7 @@ jobs:
         id: meta
         with:
           images: ghcr.io/drumandbytes/nordvpn
-          # latest=auto applies `latest` to the semver tag builds only, so it
-          # always names the newest release.
-          #
-          # It used to be applied on main pushes instead, which meant `latest`
-          # and the release tags were different builds of the same commit --
-          # and because apt installs are unpinned, genuinely different images.
-          # 1.0.2 was sha256:0679f53... while latest was sha256:6e36d4c...,
-          # with nothing recording what latest contained. Same failure the date
-          # tags had: a published image no release could name.
+          # latest=auto puts `latest` on release tags only, so it's always the newest release.
           flavor: |
             latest=auto
           tags: |
@@ -154,9 +115,8 @@ jobs:
             $(printf 'ghcr.io/drumandbytes/nordvpn@sha256:%s ' *)
         shell: bash
 
-      # imagetools create does not report the digest of what it just pushed, and
-      # the attestation below needs one. Every tag resolves to the same manifest
-      # list, so read it back from the first.
+      # imagetools create doesn't output the digest the attestation needs;
+      # read it back from the first tag.
       - name: Read back the manifest list digest
         id: manifest
         run: |
@@ -166,8 +126,7 @@ jobs:
           echo "manifest list $ref is $digest"
         shell: bash
 
-      # Signed SLSA build provenance for the manifest list, stored next to it in
-      # GHCR as an OCI referrer. Verify with:
+      # SLSA provenance, stored next to the image in GHCR. Verify with:
       #   gh attestation verify oci://ghcr.io/drumandbytes/nordvpn:latest --owner drumandbytes
       - uses: actions/attest-build-provenance@v4.2.2
         with:

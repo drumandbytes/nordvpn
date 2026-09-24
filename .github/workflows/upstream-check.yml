@@ -1,17 +1,7 @@
 name: Upstream check
 
-# Replaces both the old daily nordvpn-version check and build.yml's weekly cron.
-#
-# The old split had a gap. The version check watched one input (the nordvpn
-# client) and produced a proper release; the weekly timer caught everything else
-# -- Debian security updates, a moved distroless :latest -- but published images
-# named only `latest` and a date, which no semver constraint can select and no
-# release records.
-#
-# This watches every input instead (scripts/upstream-lock.sh) and opens a PR when
-# any of them moves. release-please turns that into a patch release and build.yml
-# publishes the semver image, so every published image is commit-driven. Nothing
-# rebuilds on a calendar: an unchanged week produces no PR and no release.
+# Watches every image input (scripts/upstream-lock.sh) and opens a PR when
+# one moves; release-please and build.yml turn it into a release.
 
 on:
   schedule:
@@ -35,7 +25,6 @@ jobs:
         with:
           client-id: ${{ secrets.DNB_ROBOT_CLIENT_ID }}
           private-key: ${{ secrets.AUTOMATION_APP_PRIVATE_KEY }}
-          # Only what this job needs (pushes the lock-update branch and opens a labelled PR), not the app's whole grant.
           permission-contents: write
           permission-pull-requests: write
           permission-issues: write
@@ -53,8 +42,7 @@ jobs:
           echo "--- resolved upstream inputs ---"
           cat /tmp/upstream.lock.new
 
-          # A missing lock file is the first run, not an error: the diff below
-          # treats it as changed and the PR seeds it.
+          # No lock file yet means first run; the PR seeds it.
           if [ -f upstream.lock ] && diff -q upstream.lock /tmp/upstream.lock.new >/dev/null; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "nothing moved upstream"
@@ -63,8 +51,7 @@ jobs:
             [ -f upstream.lock ] && diff upstream.lock /tmp/upstream.lock.new || true
           fi
 
-          # The client version drives the PR title -- it is the change a human
-          # actually cares about when it is the one that moved.
+          # The client version titles the PR when it's what moved.
           awk -F= '/^nordvpn=/{print "client="$2}' /tmp/upstream.lock.new >> "$GITHUB_OUTPUT"
 
       - if: steps.check.outputs.changed == 'true'
