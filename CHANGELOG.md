@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.5](https://github.com/drumandbytes/nordvpn/compare/v1.1.4...v1.1.5) (2026-09-24)
+
+
+### Bug Fixes
+
+* **ci:** strip sha256: prefix from digest artifact filename ([#38](https://github.com/drumandbytes/nordvpn/issues/38)) ([5486d17](https://github.com/drumandbytes/nordvpn/commit/5486d17406c6359fed7d2ddaad4b7b5a346dd74a))
+
 ## [1.1.4](https://github.com/drumandbytes/nordvpn/compare/v1.1.3...v1.1.4) (2026-09-20)
 
 
