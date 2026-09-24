@@ -21,7 +21,6 @@ jobs:
   lint:
     uses: drumandbytes/reusable-actions/.github/workflows/go-ci.yml@v1
     with:
-      go-version: "1.27"
       dockerfile-path: Dockerfile
 
   # #21/#23: the GHCR prune script deleted reachable attestation data once
@@ -72,28 +71,12 @@ jobs:
           docker exec smoke-test /usr/bin/wg --version
           docker rm -f smoke-test
 
-  trivy:
-    uses: drumandbytes/reusable-actions/.github/workflows/security-scan.yml@v1
-    with:
-      scan-type: image
-      dockerfile: Dockerfile
-      severity: 'CRITICAL,HIGH'
-      ignore-unfixed: true
-      # nordvpn/nordvpnd/nordfileshare/norduserd are themselves Go binaries
-      # (discovered via `trivy image --format json`, not obvious from the
-      # outside) — closed-source vendor binaries we can't recompile, so
-      # their embedded stdlib version is entirely NordVPN's call, not ours.
-      # Scanning them just reports CVEs we have no way to act on.
-      # /entrypoint (our own binary, same Go toolchain as everything else
-      # here) stays in scope.
-      skip-files: 'usr/bin/nordvpn,usr/sbin/nordvpnd,usr/lib/nordvpn/nordfileshare,usr/lib/nordvpn/norduserd'
-
   # Single stable name for the org's required-status-check ruleset to point
   # at, regardless of how the real jobs above are split or renamed.
   required-checks-passed:
     name: Required checks passed
     runs-on: ubuntu-latest
-    needs: [lint, prune-ghcr-self-test, smoke-test, trivy]
+    needs: [lint, prune-ghcr-self-test, smoke-test]
     if: always()
     steps:
       - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')

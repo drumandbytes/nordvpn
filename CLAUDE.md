@@ -12,7 +12,7 @@ go vet ./...
 docker build -t nordvpn .
 ```
 
-CI (`validate.yml`) runs `drumandbytes/reusable-actions` go-ci + a Trivy scan + a smoke test that boots the built image with no config and checks it doesn't crash.
+CI (`validate.yml`) runs `drumandbytes/reusable-actions` go-ci + a smoke test that boots the built image with no config and checks it doesn't crash. The Trivy image scan is its own workflow (`security.yml`: PRs plus a weekly run on main), kept out of `validate.yml` so a CVE can't block every Dependabot merge — auto-merge gates on Validate.
 
 ## `upstream.lock` — read this before touching it
 
