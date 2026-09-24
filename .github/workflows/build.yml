@@ -86,7 +86,9 @@ jobs:
           mkdir -p /tmp/digests
           # The digest arrives as sha256:<hex>; the bare hex is used as a
           # filename so the merge job can glob them without parsing.
-          touch "/tmp/digests/${{ steps.build.outputs.digest }}"
+          # upload-artifact rejects ":" in paths, so strip the prefix here.
+          digest='${{ steps.build.outputs.digest }}'
+          touch "/tmp/digests/${digest#sha256:}"
         shell: bash
 
       - uses: actions/upload-artifact@v7.0.1
@@ -149,7 +151,7 @@ jobs:
         run: |
           docker buildx imagetools create \
             $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf 'ghcr.io/drumandbytes/nordvpn@%s ' *)
+            $(printf 'ghcr.io/drumandbytes/nordvpn@sha256:%s ' *)
         shell: bash
 
       # imagetools create does not report the digest of what it just pushed, and
