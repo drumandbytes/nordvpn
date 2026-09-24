@@ -1,10 +1,6 @@
 name: Security
 
-# Kept out of the Validate workflow on purpose. Auto-merge gates on Validate's
-# conclusion, so a scan there meant a vulnerability anywhere blocked every
-# Dependabot merge, including ones that had nothing to do with it. Findings
-# still fail this workflow; the weekly run catches advisories published
-# against what's already on main.
+# Separate from CI so a finding can't block auto-merge of an unrelated Dependabot fix.
 on:
   pull_request:
     branches: [main]
@@ -24,11 +20,6 @@ jobs:
     uses: drumandbytes/reusable-actions/.github/workflows/security-scan.yml@v1
     with:
       scan-type: image
-      # nordvpn/nordvpnd/nordfileshare/norduserd are themselves Go binaries
-      # (discovered via `trivy image --format json`, not obvious from the
-      # outside) — closed-source vendor binaries we can't recompile, so
-      # their embedded stdlib version is entirely NordVPN's call, not ours.
-      # Scanning them just reports CVEs we have no way to act on.
-      # /entrypoint (our own binary, same Go toolchain as everything else
-      # here) stays in scope.
+      # The nordvpn binaries are closed-source Go; their stdlib CVEs aren't ours
+      # to fix. /entrypoint stays in scope.
       skip-files: 'usr/bin/nordvpn,usr/sbin/nordvpnd,usr/lib/nordvpn/nordfileshare,usr/lib/nordvpn/norduserd'

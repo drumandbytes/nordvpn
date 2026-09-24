@@ -15,10 +15,7 @@ updates:
       prefix: "fix"
       include: "scope"
 
-  # Base image bumps (golang:1.27-trixie, debian:trixie-slim). The NordVPN
-  # package itself is deliberately unpinned in the Dockerfile (always
-  # installs whatever's current) - see the Dockerfile's own comment - so
-  # this only tracks the two pinned upstream images, not that package.
+  # Base images only; the nordvpn package is unpinned on purpose (see the Dockerfile).
   - package-ecosystem: "docker"
     cooldown:
       default-days: 7
@@ -33,8 +30,6 @@ updates:
       prefix: "fix"
       include: "scope"
 
-  # Grouped into a single PR so related action bumps land together rather than
-  # as a stream of separate PRs. Auto-merge handles them once CI passes.
   - package-ecosystem: "github-actions"
     cooldown:
       default-days: 7
