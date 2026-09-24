@@ -35,14 +35,18 @@ jobs:
         with:
           client-id: ${{ secrets.DNB_ROBOT_CLIENT_ID }}
           private-key: ${{ secrets.AUTOMATION_APP_PRIVATE_KEY }}
+          # Only what this job needs (pushes the lock-update branch and opens a labelled PR), not the app's whole grant.
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
 
       - uses: actions/checkout@v7
         with:
+          persist-credentials: true  # this workflow pushes with the checkout's credentials
           token: ${{ steps.app-token.outputs.token }}
 
       # imagetools resolves the base image digests without pulling the images.
-      - uses: docker/setup-buildx-action@v4.4.1
-
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - id: check
         run: |
           ./scripts/upstream-lock.sh > /tmp/upstream.lock.new
