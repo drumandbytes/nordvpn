@@ -1,33 +1,10 @@
-# Three-stage build. Full rationale: install the real .deb (and its OS
-# dependencies) on Debian as normal, compile a small Go binary to replace
-# the shell entrypoint (distroless has no shell at all), then copy only
-# the resulting binaries and shared libraries onto distroless/base-debian13
-# for the actual runtime image — no apt, no shell, no package manager in
-# what ships. The exact file list came from inspecting the real package
-# (`dpkg -L nordvpn`) and each binary's real dependency graph (`ldd`)
-# directly, not guessed — and re-verified against trixie specifically after
-# moving off bookworm, since library versions/dependency sets genuinely
-# differ between Debian releases (e.g. `ip` needs libselinux/libpcre2 on
-# trixie but not libbsd/libmd like it did on bookworm — though libbsd/libmd
-# came back anyway once nft was added, needed there for an unrelated
-# reason). nft itself was missing entirely at first: nordvpnd shells out to
-# it by bare name (PATH lookup) for firewall/routing setup during `connect`,
-# invisible until an actual connect attempt was tried — `iptables` alone
-# wasn't enough, it's a genuinely separate binary/package (nftables).
-# Same story for `sysctl` (net.ipv6/rp_filter tuning during connect/meshnet)
-# and `ps` (norduserd shells out to it for a process check) — both from
-# procps, both invisible until the CLI surface that needs them was actually
-# exercised. `ps` pulled in libproc2.so.0 + libsystemd.so.0 as new shared
-# libraries; libcap.so.2 and libm.so.6 were already covered (nft, base image).
+# Install the real .deb on Debian, build a Go entrypoint (distroless has no
+# shell), then copy only the binaries and the libraries ldd reports onto
+# distroless. Not everything shows up in ldd: nordvpnd shells out by name to
+# nft, sysctl and ps (procps) during connect/meshnet, so those are copied too.
 #
-# Deliberately not pinning the nordvpn/iptables/iproute2/wireguard-tools
-# package versions in deb-builder — the entire point of this image is
-# always installing whatever's current in NordVPN's "stable" channel at
-# build time (weekly rebuilds), not a fixed version.
-#
-# debian:trixie-slim / distroless/base-debian13 — trixie is current Debian
-# stable (bookworm is oldstable now), so this tracks the same "always
-# current" reasoning as everything else in this file.
+# nordvpn and its apt deps are deliberately unpinned: the image tracks
+# NordVPN's stable channel; upstream-check.yml rebuilds when an input moves.
 
 FROM debian:trixie-slim AS deb-builder
 # hadolint ignore=DL3008
@@ -42,38 +19,19 @@ RUN apt-get update \
     && apt-get update \
     && apt-get install -y --no-install-recommends nordvpn iptables iproute2 wireguard-tools nftables procps
 
-# Grabbed from the actual base image (not synthesized) so it starts from
-# distroless's own root/nobody/nonroot entries rather than guessing at them.
-# nordvpnd's own postinst creates the `nordvpn` system group (gid 999) when
-# the .deb installs here, but the final stage never runs that install — it
-# only copies files — so without this, norduserd fails every gid lookup
-# with "unknown group nordvpn" at runtime.
+# distroless's own /etc/group, plus the `nordvpn` group (gid 999) the .deb's
+# postinst created: the final stage only copies files, and norduserd fails
+# every lookup without it.
 # hadolint ignore=DL3007
 COPY --from=gcr.io/distroless/base-debian13:latest /etc/group /etc/group.distroless-base
 
-# Collect everything the final stage needs into one arch-neutral tree,
-# mirroring its destination layout exactly. This has to happen here, not as
-# hardcoded paths in the final stage's COPY instructions: the actual
-# multiarch library directory (x86_64-linux-gnu vs aarch64-linux-gnu) is
-# only known once buildx is actually building for a given --platform, so it
-# has to be resolved here where `dpkg --print-architecture` (always
-# available, no dpkg-dev needed) can tell us. (Shipped broken once already:
-# every path was hardcoded to x86_64-linux-gnu, so the linux/arm64 leg of
-# the multi-platform build failed outright — libcap-ng.so.0 "not found"
-# because it was looking on the wrong architecture's path entirely, not
-# because the file was genuinely missing.)
+# Staged into one tree mirroring the final layout, because the multiarch
+# triplet is only known here, at build time per --platform (hardcoding
+# x86_64 once broke arm64).
 #
-# Libraries stage into usr/lib/<triplet>, not lib/<triplet>: distroless's
-# debian13 base has /lib as a symlink to usr/lib (Debian's usrmerge), and
-# BuildKit's COPY refuses to merge a source tree through a symlinked
-# destination component ("cannot copy to non-directory") — a real
-# difference from the legacy `docker build` engine, which tolerates it
-# fine. Shipped broken once already: verified locally with the legacy
-# builder (no buildx available there), which hid this completely; only
-# showed up once CI's actual BuildKit-based build ran it. usr/lib/<triplet>
-# is the real, non-symlinked path on both bookworm and trixie, so this
-# works on either regardless of which one distroless's usrmerge status
-# happens to be for a given release.
+# usr/lib/<triplet>, not lib/<triplet>: distroless's /lib is a usrmerge
+# symlink and BuildKit's COPY refuses to write through it (the legacy builder
+# doesn't mind, which hid this locally).
 RUN set -eu; \
     case "$(dpkg --print-architecture)" in \
       amd64) triplet=x86_64-linux-gnu ;; \
@@ -107,19 +65,14 @@ WORKDIR /src
 COPY go.mod main.go ./
 RUN CGO_ENABLED=0 go build -o /entrypoint .
 
-# Always installing whatever's current, same reasoning as the nordvpn
-# package above — the weekly rebuild is what keeps this patched.
+# unpinned, like the nordvpn package
 # hadolint ignore=DL3007
 FROM gcr.io/distroless/base-debian13:latest
 
-# Binaries, nordvpn's own bundled libraries, its data files, and every
-# shared library ldd found that distroless doesn't already ship — already
-# laid out at their exact final paths (including the correct
-# architecture's multiarch lib directory) by the staging step above, so
-# this is the only COPY the final stage needs.
+# everything staged above, already at final paths
 COPY --from=deb-builder /staging/ /
 
-# nordvpn's own bundled libraries live outside the standard search path.
+# nordvpn's bundled libraries live outside the default search path
 ENV LD_LIBRARY_PATH=/usr/lib/nordvpn
 
 COPY --from=go-builder /entrypoint /entrypoint
