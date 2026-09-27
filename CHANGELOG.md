@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/drumandbytes/nordvpn/compare/v1.1.5...v1.2.0) (2026-09-27)
+
+
+### Features
+
+* NORDVPN_SET and NORDVPN_ALLOWLIST for full settings parity ([#46](https://github.com/drumandbytes/nordvpn/issues/46)) ([8f7fcdf](https://github.com/drumandbytes/nordvpn/commit/8f7fcdfd0e4f37b9a1bf0d8e1c518360b9843037))
+
 ## [1.1.5](https://github.com/drumandbytes/nordvpn/compare/v1.1.4...v1.1.5) (2026-09-24)
 
 
