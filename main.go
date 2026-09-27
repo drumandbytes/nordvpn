@@ -89,6 +89,19 @@ func run() {
 		runCLI("setting firewall failed", "set", "firewall", fw)
 	}
 
+	// Allowlist before settings: a killswitch from NORDVPN_SET must not cut
+	// off cluster subnets or probe ports before they're allowlisted. Cleared
+	// first so env stays the source of truth over a persisted /var/lib/nordvpn.
+	if allowlist, ok := os.LookupEnv("NORDVPN_ALLOWLIST"); ok {
+		runCLI("clearing allowlist failed", "allowlist", "remove", "all")
+		for _, args := range entries(allowlist) {
+			runCLI("allowlist "+strings.Join(args, " ")+" failed", append([]string{"allowlist", "add"}, args...)...)
+		}
+	}
+	for _, args := range entries(os.Getenv("NORDVPN_SET")) {
+		runCLI("set "+strings.Join(args, " ")+" failed", append([]string{"set"}, args...)...)
+	}
+
 	if connect, ok := os.LookupEnv("NORDVPN_CONNECT"); ok {
 		// empty = recommended server; multi-word values ("Hungary Budapest")
 		// must reach the CLI as separate args
@@ -141,9 +154,28 @@ func runCLI(warnMsg string, args ...string) {
 	}
 }
 
+// entries splits "killswitch on; technology nordlynx" into CLI arg lists.
+// Only `set`/`allowlist add` ever receive them, so env can't reach other verbs.
+func entries(value string) [][]string {
+	var out [][]string
+	for _, entry := range strings.Split(value, ";") {
+		if fields := strings.Fields(entry); len(fields) > 0 {
+			out = append(out, fields)
+		}
+	}
+	return out
+}
+
+// The CLI exits non-zero when asked for the state it's already in, which is
+// every restart with a persisted /var/lib/nordvpn.
 func alreadyDone(out []byte) bool {
 	s := strings.ToLower(string(out))
-	return strings.Contains(s, "already logged in") || strings.Contains(s, "already enabled")
+	for _, marker := range []string{"already logged in", "already enabled", "already on the allowlist", "already set"} {
+		if strings.Contains(s, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // `meshnet set nickname` succeeds silently before the device is registered,
@@ -172,8 +204,7 @@ func runCLIRetry(warnMsg string, attempts int, delay time.Duration, args ...stri
 		}
 		// non-zero exit on an already-satisfied precondition (e.g. already logged
 		// in); without this it burns the retry budget and warns misleadingly
-		outStr := strings.ToLower(string(out))
-		if strings.Contains(outStr, "already logged in") || strings.Contains(outStr, "already enabled") {
+		if alreadyDone(out) {
 			return
 		}
 		if i < attempts-1 {
