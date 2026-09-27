@@ -90,9 +90,13 @@ func run() {
 	}
 
 	// Allowlist before settings: a killswitch from NORDVPN_SET must not cut
-	// off cluster subnets or probe ports before they're allowlisted.
-	for _, args := range entries(os.Getenv("NORDVPN_ALLOWLIST")) {
-		runCLI("allowlist "+strings.Join(args, " ")+" failed", append([]string{"allowlist", "add"}, args...)...)
+	// off cluster subnets or probe ports before they're allowlisted. Cleared
+	// first so env stays the source of truth over a persisted /var/lib/nordvpn.
+	if allowlist, ok := os.LookupEnv("NORDVPN_ALLOWLIST"); ok {
+		runCLI("clearing allowlist failed", "allowlist", "remove", "all")
+		for _, args := range entries(allowlist) {
+			runCLI("allowlist "+strings.Join(args, " ")+" failed", append([]string{"allowlist", "add"}, args...)...)
+		}
 	}
 	for _, args := range entries(os.Getenv("NORDVPN_SET")) {
 		runCLI("set "+strings.Join(args, " ")+" failed", append([]string{"set"}, args...)...)

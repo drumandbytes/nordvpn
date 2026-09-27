@@ -55,7 +55,7 @@ docker run -d \
   ghcr.io/drumandbytes/nordvpn:latest
 ```
 
-Both variables only ever reach `nordvpn set` and `nordvpn allowlist add`. The image stays shell-less, and on a restart with a persisted `/var/lib/nordvpn` the client's "already set / already on the allowlist" replies are treated as success.
+Don't combine this with `lan-discovery on`: the client then silently drops private (10/8, 172.16/12, 192.168/16) subnets from the allowlist, which in a pod means the cluster CIDRs. Both variables only ever reach `nordvpn set` and `nordvpn allowlist add`/`remove all`. The image stays shell-less, and on a restart with a persisted `/var/lib/nordvpn` the client's "already set / already on the allowlist" replies are treated as success.
 
 ### Meshnet node
 
@@ -76,13 +76,13 @@ Generate an access token: NordVPN account → Meshnet (or VPN) → Manual setup 
 | Variable | Description |
 |----------|--------------|
 | `NORDVPN_TOKEN` | Access token used to log in. Required unless a session is already persisted in a mounted `/var/lib/nordvpn`. |
-| `NORDVPN_CONNECT` | Connects to a VPN server. Empty value = recommended server; otherwise a country/city/server/group, anything `nordvpn connect` itself accepts. Unset by default (no VPN tunnel). |
+| `NORDVPN_CONNECT` | Connects to a VPN server. Empty value = recommended server; otherwise a country/city/server/group, anything `nordvpn connect` itself accepts. Unset by default (no VPN tunnel). Flags pass through too: `--group P2P Netherlands`. |
 | `NORDVPN_MESHNET` | `on` to enable Meshnet. Unset/anything else = off. |
 | `NORDVPN_NICKNAME` | Sets this device's Meshnet nickname (`nordvpn meshnet set nickname`). Only applies when `NORDVPN_MESHNET=on`. Without one, every restart can show up as a new device unless state is persisted. |
 | `NORDVPN_FIREWALL` | `on` or `off`. Unset by default — leaves the client's own default behavior alone. If you're using `NORDVPN_MESHNET=on` **without** `NORDVPN_CONNECT` (Meshnet only, no VPN exit server), you probably want this set to `off` explicitly, since the killswitch otherwise blocks the container's normal non-tunnel traffic. |
 | `NORDVPN_LOG_LEVEL` | `debug`, `info` (default), `warn`, or `error`. `nordvpnd` defaults to its most verbose (`debug`) when it can't find a log-level file to read, which is always true on a fresh container — this just writes one before starting the daemon. |
-| `NORDVPN_SET` | `;`-separated settings, each passed to `nordvpn set`: e.g. `killswitch on; technology nordlynx; threatprotectionlite on`. Anything `nordvpn set` accepts works. Applied after login and before `NORDVPN_CONNECT`. |
-| `NORDVPN_ALLOWLIST` | `;`-separated entries, each passed to `nordvpn allowlist add`: e.g. `subnet 10.244.0.0/16; port 8080`. Applied **before** `NORDVPN_SET`, so a kill switch never cuts off what you allowlist. |
+| `NORDVPN_SET` | `;`-separated settings, each passed to `nordvpn set`: e.g. `killswitch on; technology nordlynx; post-quantum on`. Anything `nordvpn set` accepts works. Applied after login and before `NORDVPN_CONNECT`. |
+| `NORDVPN_ALLOWLIST` | `;`-separated entries, each passed to `nordvpn allowlist add`: e.g. `subnet 10.244.0.0/16; port 8080`. Applied **before** `NORDVPN_SET`, so a kill switch never cuts off what you allowlist. Replaces the whole allowlist each start (set it empty to clear); unset leaves it alone. |
 
 ### Persisting device/session identity
 
