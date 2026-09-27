@@ -145,6 +145,10 @@ gh attestation verify oci://ghcr.io/drumandbytes/nordvpn:latest --owner drumandb
 This confirms the image was built from this repo by the `Build` workflow, and
 not pushed from anywhere else.
 
+## How it was made
+
+Built with the help of an AI coding assistant (Claude). I review and test what gets published.
+
 ## License
 
 MIT — see [LICENSE](LICENSE). Not affiliated with or endorsed by Nord Security.
