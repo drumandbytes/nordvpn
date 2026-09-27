@@ -40,6 +40,23 @@ Other containers attach to its network namespace, same as any VPN sidecar:
 docker run -it --net=container:<this container's name> -d your/other-image
 ```
 
+### As a gluetun-style VPN sidecar
+
+Kill switch on, cluster traffic and probe ports allowed through, connected before the other containers start using the network:
+
+```sh
+docker run -d \
+  --cap-add=NET_ADMIN --cap-add=NET_RAW \
+  --device=/dev/net/tun \
+  -e NORDVPN_TOKEN=<your access token> \
+  -e NORDVPN_ALLOWLIST="subnet 10.244.0.0/16; subnet 10.96.0.0/12; port 8080" \
+  -e NORDVPN_SET="killswitch on; technology nordlynx" \
+  -e NORDVPN_CONNECT=Netherlands \
+  ghcr.io/drumandbytes/nordvpn:latest
+```
+
+Both variables only ever reach `nordvpn set` and `nordvpn allowlist add`. The image stays shell-less, and on a restart with a persisted `/var/lib/nordvpn` the client's "already set / already on the allowlist" replies are treated as success.
+
 ### Meshnet node
 
 ```sh
@@ -64,6 +81,8 @@ Generate an access token: NordVPN account → Meshnet (or VPN) → Manual setup 
 | `NORDVPN_NICKNAME` | Sets this device's Meshnet nickname (`nordvpn meshnet set nickname`). Only applies when `NORDVPN_MESHNET=on`. Without one, every restart can show up as a new device unless state is persisted. |
 | `NORDVPN_FIREWALL` | `on` or `off`. Unset by default — leaves the client's own default behavior alone. If you're using `NORDVPN_MESHNET=on` **without** `NORDVPN_CONNECT` (Meshnet only, no VPN exit server), you probably want this set to `off` explicitly, since the killswitch otherwise blocks the container's normal non-tunnel traffic. |
 | `NORDVPN_LOG_LEVEL` | `debug`, `info` (default), `warn`, or `error`. `nordvpnd` defaults to its most verbose (`debug`) when it can't find a log-level file to read, which is always true on a fresh container — this just writes one before starting the daemon. |
+| `NORDVPN_SET` | `;`-separated settings, each passed to `nordvpn set`: e.g. `killswitch on; technology nordlynx; threatprotectionlite on`. Anything `nordvpn set` accepts works. Applied after login and before `NORDVPN_CONNECT`. |
+| `NORDVPN_ALLOWLIST` | `;`-separated entries, each passed to `nordvpn allowlist add`: e.g. `subnet 10.244.0.0/16; port 8080`. Applied **before** `NORDVPN_SET`, so a kill switch never cuts off what you allowlist. |
 
 ### Persisting device/session identity
 
