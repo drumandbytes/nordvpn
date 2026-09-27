@@ -1,31 +1,19 @@
 #!/usr/bin/env bash
 # Prints a fingerprint of every upstream input that can change the built image.
 #
-# The image pins almost nothing on purpose (see the Dockerfile): the nordvpn
-# client and its apt dependencies are installed unpinned so the image always
-# ships what NordVPN and Debian currently publish. That is the right behaviour
-# for a VPN client and the wrong behaviour for reproducibility -- the same
-# Dockerfile builds a materially different image week to week, with no commit to
-# hang a version off.
+# The client and apt deps are unpinned on purpose (see the Dockerfile), so the
+# same Dockerfile builds a different image week to week. Watching the inputs
+# instead of a timer turns each upstream move into a normal release.
 #
-# Rebuilding weekly on a timer was the old answer, and it published images no
-# semver could name. This is the other half: watch the inputs instead of the
-# clock, so a rebuild happens when something upstream actually moves, and lands
-# as a normal release.
-#
-# Output is a sorted key=value list, diffed against the committed upstream.lock.
+# Output: sorted key=value, diffed against the committed upstream.lock.
 
 set -euo pipefail
 
-# This runs unattended on a daily schedule. Without timeouts a mirror that
-# accepts the connection and then stalls holds the job open until GitHub's
-# six-hour ceiling, and the failure reads as "check never finished" rather than
-# "the mirror is down".
+# unattended daily run: without timeouts a stalled mirror holds the job for 6h
 CURL_OPTS=(-fsSL --connect-timeout 10 --max-time 180 --retry 2 --retry-delay 3)
 
 # --- the nordvpn client, from NordVPN's own apt channel -----------------------
-# Same parse as the old version check: their Packages index is the only feed
-# they publish -- no tags, no releases, no RSS.
+# Their Packages index is the only feed they publish.
 nordvpn_version() {
   curl "${CURL_OPTS[@]}" https://repo.nordvpn.com/deb/nordvpn/debian/dists/stable/main/binary-amd64/Packages \
     | awk '/^Package: nordvpn$/{p=1;next} /^$/{p=0} p&&/^Version:/{print $2}' \
@@ -33,31 +21,19 @@ nordvpn_version() {
 }
 
 # --- base image digests ------------------------------------------------------
-# By digest, not tag. distroless/base-debian13 is the reason this matters:
-# it is pinned to :latest, so it moves under us with nothing to notice --
-# Dependabot only sees tag changes, and that tag never changes.
-# timeout for the same reason curl has one: a registry that hangs rather than
-# refusing would otherwise stall the whole job. Not present on macOS by default,
-# and this is worth being able to run locally, so it is used only if available.
+# By digest: distroless/base-debian13 is pinned to :latest, which Dependabot
+# never sees move. timeout only if available (macOS lacks it by default).
 TIMEOUT=(); command -v timeout >/dev/null 2>&1 && TIMEOUT=(timeout 120)
 
 image_digest() {
-  # ${arr[@]+"${arr[@]}"} rather than "${arr[@]}": under set -u an empty array
-  # is an unbound variable on older bash, which is what macOS ships.
+  # ${arr[@]+"${arr[@]}"}: an empty array is unbound under set -u on macOS's old bash
   ${TIMEOUT[@]+"${TIMEOUT[@]}"} docker buildx imagetools inspect "$1" --format '{{.Manifest.Digest}}'
 }
 
-# Every lookup goes through add(). A failed curl or a missing binary makes the
-# surrounding $(...) expand to nothing while `echo "key=$(...)"` still succeeds,
-# so without a check the script exits 0 having written a lock full of empty
-# values -- the worst outcome available, because the committed lock would then
-# differ from every good run afterwards (a PR a day), or a real upstream change
-# would be masked by a blank on both sides.
-#
-# add() runs in the parent shell on purpose. The obvious version of this guard
-# sits inside the substitution -- `key=$(require ...)` -- where `exit` only ends
-# the subshell and the script sails on. That version was written first and
-# tested green against the happy path.
+# Every lookup goes through add(): a failed curl inside `echo "key=$(...)"`
+# still exits 0, writing a lock of blanks (a PR a day, or masked changes).
+# add() runs in the parent shell on purpose; `exit` inside $(...) only ends
+# the subshell.
 LOCK=""
 add() {
   local key="$1" value="$2"
@@ -69,21 +45,13 @@ add() {
 }
 
 # --- apt dependency versions -------------------------------------------------
-# Checks trixie and trixie-security and takes the higher: a security update to
-# iptables or procps lands only in the security suite, changes no tag and no
-# version string we track elsewhere, and is exactly the drift the weekly timer
-# existed to catch.
+# Takes the higher of trixie and trixie-security: security updates change no
+# tag we track elsewhere.
 #
-# The two archives do not agree on compression: the main mirror serves
-# Packages.gz, security serves Packages.xz only. Fetch whichever exists rather
-# than assuming -- getting this wrong 404s silently per package and the function
-# still returns the main-suite version, so security drift would go unnoticed,
-# which is the one thing this is here to catch.
-# Downloads to a file before decompressing rather than streaming. Streaming the
-# .xz attempt straight to stdout means a mirror that dies mid-transfer has
-# already emitted a partial index, and the .gz fallback then appends a second
-# copy after it. sort -V | tail -n1 happens to survive that, so it would have
-# produced right answers from corrupt input -- until the day it did not.
+# Main serves Packages.gz, security only Packages.xz; try both, since a 404
+# here silently falls back to the main-suite version. Download to a file
+# first: a stream dying mid-.xz would leave a partial index before the .gz
+# fallback's copy.
 fetch_index() {
   local base="$1" tmp
   tmp=$(mktemp)

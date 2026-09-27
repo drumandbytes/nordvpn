@@ -1,44 +1,22 @@
 #!/usr/bin/env bash
-# Deletes GHCR package versions that nothing can reach any more.
+# Deletes GHCR package versions nothing can reach any more.
 #
-# Deleting a tag in the GHCR UI removes only the index. A multi-arch build with
-# attestations publishes five to seven versions and tags one or two of them --
-# the amd64 and arm64 manifests, the provenance manifests and the sha256-<digest>
-# referrer are all untagged -- and GHCR garbage-collects none of them. After
-# pruning ten date-tagged images by hand this package held 169 versions of which
-# 25 were reachable.
+# Deleting a tag in the GHCR UI removes only the index; the per-arch manifests,
+# provenance manifests and sha256-<digest> referrers stay untagged and GHCR
+# never collects them.
 #
-# v1 (#23) built its keep-set by inspecting only *tagged* refs, one level deep:
-# for each tag, collect the digests its manifest points at, done. The three
-# sha256-<digest> attestation tags contributed none of their own children to
-# that set -- 15 digests kept where a correct pass keeps 21 -- so the untagged
-# attestation manifests underneath them read as orphans and were deleted (#21,
-# reverted in 3b2dd55). The images were never at risk; the attestations were,
-# and they were what went unchecked.
+# Walks the full reference graph BY DIGEST from every real tag, following
+# .manifests[] and .layers[]. A sha256-<digest> attestation tag becomes a root
+# once its subject is reachable. v1 (#23) only looked one level below tagged
+# refs and deleted reachable attestations (#21, reverted in 3b2dd55).
 #
-# This version walks a full reference graph instead: starting from every
-# digest a real tag names, it recursively inspects BY DIGEST -- not by tag --
-# and keeps following .manifests[] and .layers[] children for as long as
-# there are any. A sha256-<digest> attestation tag is folded in as an extra
-# root once its subject digest is confirmed reachable, and its own children
-# are then walked the same way. Nothing about reachability depends on which
-# things happen to be tagged beyond that seed.
+# Dry run by default; --delete to remove. Anything newer than MIN_AGE_HOURS
+# (default 24) is never deleted, so an in-flight build can't be pruned.
+# --self-test checks the algorithm against a generated fixture of v1's
+# failure shape (no gh/docker/network; needs jq and python3). Run it after
+# touching the graph code.
 #
-# Dry run by default. Pass --delete to actually remove anything. Anything
-# newer than MIN_AGE_HOURS (default 24) is reported but never deleted, so a
-# build still in flight can't be pruned mid-push.
-#
-# Pass --self-test to run the graph algorithm against a fixed, generated
-# fixture reproducing the v1 shape (one release indexing two per-arch
-# manifests, each with its own attestation index fanning out to two
-# untagged attestation manifests, plus a plain orphan and an attestation
-# whose subject is already gone) and check the result against a hand-derived
-# expectation. No gh, no docker, no network -- this is what should have
-# caught v1's bug before it ran against the real package, and it's the
-# thing to run first after touching the algorithm below.
-#
-# Needs: gh authenticated with read:packages and delete:packages, and docker
-# buildx for manifest inspection. --self-test needs only jq and python3.
+# Needs: gh with read:packages and delete:packages, docker buildx.
 
 set -euo pipefail
 
@@ -67,19 +45,15 @@ else
 fi
 
 # --- version listing -----------------------------------------------------
-# --paginate concatenates one JSON array per page rather than emitting a
-# single array, so the pages are stitched before parsing. Reading only the
-# first page is how a date tag survived v1's first manual sweep: the cap is
-# 100 and this package had 169 versions.
+# --paginate emits one array per page; stitch them. The cap is 100 and this
+# package had 169 versions.
 versions_json() {
   gh api "${API}?per_page=100" --paginate \
     | python3 -c 'import sys,json; print(json.dumps([v for page in json.loads("["+sys.stdin.read().replace("][","],[")+"]") for v in page]))'
 }
 
 # --- the fixed fixture for --self-test ------------------------------------
-# Digests are sha256 hashes of the node names below, generated rather than
-# typed, so there is no way for a keep-set digest and a raw-manifest digest
-# to silently drift apart in the fixture itself.
+# Digests are generated from node names so fixture and keep-set can't drift.
 generate_fixture() {
   python3 - <<'PY'
 import hashlib, json
@@ -138,9 +112,7 @@ raw = {
 print(json.dumps({
     "all": all_versions,
     "raw": raw,
-    # root+amd64+arm64+2 attestation indexes+4 attestation manifests = 9,
-    # matching the incident's own arithmetic at a scale worth hand-checking:
-    # this is the shape v1 got wrong (15 kept where 21 was correct).
+    # 9 kept: root+amd64+arm64+2 attestation indexes+4 attestation manifests (v1's shape)
     "expect_keep_ids": [1, 2, 3, 4, 5, 6, 7, 8, 9],
     "expect_orphan_ids": [10, 11],
 }))
@@ -159,11 +131,7 @@ fi
 TOTAL=$(jq 'length' <<< "$ALL")
 
 # --- graph primitives ------------------------------------------------------
-# A version's children are whatever its manifest points at: .manifests[] for
-# an index (a release, or an attestation index fanning out to per-arch
-# attestation manifests), .layers[] for a single manifest (an attestation
-# manifest pointing at its sigstore bundle blob). Both are checked every
-# time -- nothing here assumes in advance which shape a given digest is.
+# Children: .manifests[] for an index, .layers[] for a manifest; both always checked.
 children_of() {
   jq -r '(.manifests[]?.digest // empty), (.layers[]?.digest // empty)' <<<"$1" | sed 's/^sha256://'
 }
@@ -188,13 +156,9 @@ enqueue() {
   QUEUE+=("$d")
 }
 
-# A failed inspect on something already in the graph as someone's child is
-# just a leaf blob (a layer has no further children of its own) -- not an
-# error. A failed inspect on a *root* is different: a named tag or a
-# validated attestation tag that doesn't resolve means something is wrong
-# with the very thing the keep-set is anchored on, and guessing its
-# children is how v1 went wrong. Roots are inspected explicitly below and
-# abort the run if they don't resolve; drain() only ever sees non-roots.
+# A failed inspect on a child is just a leaf blob. A root that doesn't
+# resolve aborts the run: guessing its children is how v1 went wrong. Roots
+# are inspected explicitly below; drain() only sees non-roots.
 drain() {
   while [ ${#QUEUE[@]} -gt 0 ]; do
     local d="${QUEUE[0]}"
@@ -219,8 +183,7 @@ add_root() {
   done < <(children_of "$raw")
 }
 
-# Phase 1: every digest a real (non sha256-<digest>) tag names, and
-# everything reachable from it.
+# Phase 1: every digest a real (non sha256-<digest>) tag names, and what it reaches.
 NAMED_DIGESTS=$(jq -r '
   .[]
   | select((.metadata.container.tags // []) | map(select(test("^sha256-[0-9a-f]{64}$") | not)) | length > 0)
@@ -234,11 +197,8 @@ while IFS= read -r d; do
 done <<<"$NAMED_DIGESTS"
 drain
 
-# Phase 2: sha256-<digest> attestation tags whose subject is now known
-# reachable are roots too -- fold in their own digest and walk their
-# children the same way. An attestation whose subject isn't reachable
-# (already deleted, or never was) stays unpromoted and falls out as an
-# orphan below, tag or no tag.
+# Phase 2: attestation tags whose subject is reachable become roots too.
+# Unreachable subjects fall out as orphans below.
 ATT_ROWS=$(jq -r '
   .[]
   | (.name | sub("^sha256:";"")) as $own
@@ -257,14 +217,10 @@ drain
 echo "  ${TOTAL} versions, ${#VISITED[@]} digests reachable"
 
 # --- orphans -----------------------------------------------------------
-# Anything not in VISITED, tagged or not: an untagged manifest nothing
-# points at, or an attestation tag whose subject is gone.
+# Anything not in VISITED, tagged or not.
 #
-# tags defaults to "-", never "": IFS=$'\t' read still treats tab as IFS
-# whitespace even when it's the only character in IFS, so it collapses
-# consecutive delimiters instead of yielding an empty field -- an untagged
-# row's empty tags column would otherwise vanish and shift created_at left
-# into its place.
+# tags defaults to "-", never "": `IFS=$'\t' read` collapses consecutive tabs,
+# so an empty column would shift created_at left.
 ORPHAN_ROWS=()
 while IFS=$'\t' read -r id digest tags created_at; do
   [ -n "${VISITED[$digest]:-}" ] && continue
@@ -329,11 +285,8 @@ fi
 
 echo
 for id in "${TO_DELETE[@]}"; do
-  # Re-read immediately before deleting: the listing above may be minutes
-  # old by the time a long loop gets here, and an id alone is not proof of
-  # what it currently points at. Checked against *named* tags specifically
-  # -- a dangling attestation orphan always carries its own sha256-<digest>
-  # tag, so a plain "any tag at all" check would refuse to ever delete it.
+  # Re-read right before deleting: the listing may be minutes old. Checks
+  # *named* tags only, since dangling attestations carry their own sha256- tag.
   n=$(gh api "${API}/${id}" -q '[(.metadata.container.tags // [])[] | select(test("^sha256-[0-9a-f]{64}$") | not)] | length' 2>/dev/null || echo "?")
   if [ "$n" != "0" ]; then
     echo "  ${id} REFUSED -- now carries a named tag"

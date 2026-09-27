@@ -1,6 +1,4 @@
-// Replaces entrypoint.sh + healthcheck.sh — distroless has no shell to run
-// either as scripts. See README.md for why (multi-stage build copying just
-// the binaries/libraries this needs onto gcr.io/distroless/base-debian12).
+// Replaces entrypoint.sh + healthcheck.sh: distroless has no shell.
 package main
 
 import (
@@ -22,8 +20,7 @@ func main() {
 	run()
 }
 
-// Same check as the old healthcheck.sh: pass if either a regular VPN
-// tunnel is connected or Meshnet is enabled.
+// healthy if a VPN tunnel is connected or Meshnet is enabled
 func healthcheck() int {
 	if cliOutputContains("status", "status: connected") {
 		return 0
@@ -43,14 +40,8 @@ func cliOutputContains(subcmd, want string) bool {
 }
 
 func run() {
-	// nordvpnd watches this file at startup to pick a log level, and
-	// defaults to its most verbose ("debug") when the file — and the
-	// /run/nordvpn directory it lives in — don't exist, which they never
-	// do in a fresh container. Every "Response: HTTP/1.1 200 - map[...]"
-	// full-header dump and JSON config blob seen throughout this image's
-	// logs has been at that level. "info" is nordvpnd's own default
-	// outside a container; NORDVPN_LOG_LEVEL overrides it for anyone who
-	// wants debug output back temporarily.
+	// nordvpnd defaults to "debug" (full HTTP header dumps) when this file is
+	// missing, which it always is in a fresh container. NORDVPN_LOG_LEVEL overrides.
 	level := "info"
 	if l := os.Getenv("NORDVPN_LOG_LEVEL"); l != "" {
 		level = l
@@ -70,7 +61,7 @@ func run() {
 	}
 	daemonPID := cmd.Process.Pid
 
-	// We're PID 1 — forward termination signals to nordvpnd.
+	// PID 1: forward termination signals to nordvpnd
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
 	go func() {
@@ -80,42 +71,27 @@ func run() {
 
 	waitForDaemon()
 
-	// Not opt-in, unlike everything below: on first run the CLI blocks any
-	// command behind an interactive "Do you allow us to collect app
-	// performance data? (y/n)" consent prompt, reading from stdin — which
-	// doesn't exist in a detached/non-interactive container (docker run -d,
-	// a Kubernetes pod with no stdin attached). Without this, `login` just
-	// hangs forever with no error, silently. Declining is also the
-	// consistent choice with everything else here defaulting to off.
+	// Not opt-in: on first run the CLI blocks every command on an analytics
+	// y/n prompt from stdin, which a detached container doesn't have, so login
+	// hangs silently. Decline.
 	runCLI("declining analytics consent failed", "set", "analytics", "off")
 
 	if token := os.Getenv("NORDVPN_TOKEN"); token != "" {
-		// Retried, unlike everything else here: a single transient timeout
-		// on NordVPN's own credentials API (observed in production, not
-		// hypothetical) permanently fails login for the container's entire
-		// life otherwise, since nothing downstream re-attempts it - meshnet
-		// and connect both just stay in "not logged in" forever regardless
-		// of how patient the liveness probe is.
+		// retried: one transient timeout on NordVPN's credentials API (seen in
+		// prod) otherwise leaves the container logged out for its whole life
 		runCLIRetry("login failed", 5, 10*time.Second, "login", "--token", token)
 	}
 
-	// Everything below is opt-in — this image is a plain NordVPN client,
-	// usable for a regular VPN tunnel, Meshnet, or both at once. Nothing
-	// is assumed. Each is allowed to fail without taking nordvpnd down
-	// with it: e.g. NORDVPN_CONNECT set without a successful login yet
-	// (normal during interactive setup — start the container, then exec
-	// in to log in and connect by hand) shouldn't crash the container
-	// before there's ever a chance to fix it interactively.
+	// Everything below is opt-in and allowed to fail without killing nordvpnd,
+	// e.g. NORDVPN_CONNECT before login during interactive setup.
 
 	if fw := os.Getenv("NORDVPN_FIREWALL"); fw != "" {
 		runCLI("setting firewall failed", "set", "firewall", fw)
 	}
 
 	if connect, ok := os.LookupEnv("NORDVPN_CONNECT"); ok {
-		// Empty value picks the recommended server. A value can be a
-		// country, city, server, or group — anything the CLI's own
-		// `connect` argument accepts, including multi-word values like
-		// "Hungary Budapest" that need to reach the CLI as separate args.
+		// empty = recommended server; multi-word values ("Hungary Budapest")
+		// must reach the CLI as separate args
 		args := append([]string{"connect"}, strings.Fields(connect)...)
 		runCLI("connect failed (not logged in yet?)", args...)
 	}
@@ -130,11 +106,8 @@ func run() {
 	os.Exit(waitAndReap(daemonPID))
 }
 
-// We started nordvpnd with cmd.Start(), not cmd.Run()/cmd.Wait(), so we own
-// reaping it — and as PID 1, also anything nordvpnd itself spawns and
-// abandons (nordfileshare, norduserd, openvpn), which would otherwise pile
-// up as zombies. One wait loop handles both: keep reaping until nordvpnd's
-// own PID shows up exited, then mirror its exit code.
+// As PID 1 we reap nordvpnd and anything it abandons (nordfileshare,
+// norduserd, openvpn) until nordvpnd itself exits, then mirror its code.
 func waitAndReap(daemonPID int) int {
 	for {
 		var status syscall.WaitStatus
@@ -159,12 +132,8 @@ func waitForDaemon() {
 
 func runCLI(warnMsg string, args ...string) {
 	if out, err := exec.Command(nordvpnBin, args...).CombinedOutput(); err != nil {
-		// The CLI reports these as failures (non-zero exit) even though
-		// the state they're complaining about is exactly the desired one
-		// — observed logging a scary-looking warning for a container that
-		// had actually already succeeded (e.g. meshnet enabled from a
-		// previous run via the persisted state PVC, then this call
-		// redundantly retries the same "on" it's already at).
+		// the CLI exits non-zero when the state is already the one asked for
+		// (e.g. meshnet already on from the persisted PVC)
 		if alreadyDone(out) {
 			return
 		}
@@ -177,10 +146,8 @@ func alreadyDone(out []byte) bool {
 	return strings.Contains(s, "already logged in") || strings.Contains(s, "already enabled")
 }
 
-// `meshnet set nickname` returns success even when the device isn't fully
-// registered yet, silently no-oping instead of erroring — so unlike
-// runCLIRetry, success here means actually checking the nickname stuck via
-// `meshnet peer list`, not trusting the set command's own exit code.
+// `meshnet set nickname` succeeds silently before the device is registered,
+// so success means `meshnet peer list` shows the nickname, not the exit code.
 func setNicknameRetry(nick string, attempts int, delay time.Duration) {
 	for i := 0; i < attempts; i++ {
 		_, _ = exec.Command(nordvpnBin, "meshnet", "set", "nickname", nick).CombinedOutput()
@@ -203,12 +170,8 @@ func runCLIRetry(warnMsg string, attempts int, delay time.Duration, args ...stri
 		if err == nil {
 			return
 		}
-		// The CLI reports these as failures (non-zero exit), but the
-		// state they're complaining about is exactly what we're retrying
-		// to achieve - observed burning the full retry budget on an
-		// already-satisfied precondition (e.g. re-running on a container
-		// that already logged in from a previous attempt in the same
-		// life) before giving up with a misleading warning.
+		// non-zero exit on an already-satisfied precondition (e.g. already logged
+		// in); without this it burns the retry budget and warns misleadingly
 		outStr := strings.ToLower(string(out))
 		if strings.Contains(outStr, "already logged in") || strings.Contains(outStr, "already enabled") {
 			return
