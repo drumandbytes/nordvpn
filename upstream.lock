@@ -5,5 +5,5 @@ apt:procps=2:4.0.4-9
 apt:wireguard-tools=1.0.20210914-3
 image:debian:trixie-slim=sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
 image:gcr.io/distroless/base-debian13:latest=sha256:0ebad3510af52aefe45045cc01b07564570be4feecf8d9f93d3a05d1b5f2f93b
-image:golang:1.27-trixie=sha256:433790e515d27dc6003e847e644cc0af956985cf315c1c58a3b73ee2dd305183
+image:golang:1.27-trixie=sha256:3b77fc618ec235a1ab412de7737f120dd507c57e8d87de4cbb7994fb94275ed5
 nordvpn=5.4.0
