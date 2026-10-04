@@ -18,7 +18,7 @@ CI (`validate.yml`) runs `drumandbytes/reusable-actions` go-ci + a smoke test th
 
 The Dockerfile pins almost nothing on purpose — `nordvpn`, `iptables`, `iproute2`, `wireguard-tools`, `nftables` install unpinned from their apt channels so the image always ships whatever's currently in NordVPN's `stable` channel and current Debian trixie. That's correct for a VPN client but means the same Dockerfile builds a different image week to week with no commit to hang a version off.
 
-`upstream.lock` is **not a build pin** — nothing reads it at build time. It's a fingerprint of every upstream input that can change the image (nordvpn client version, apt package versions from both trixie and trixie-security, and base image digests for `debian:trixie-slim`/`golang:1.27-trixie`/`distroless/base-debian13`), used purely for *drift detection*.
+`upstream.lock` is **not a build pin** — nothing reads it at build time. It's a fingerprint of every upstream input that can change the image (nordvpn client version, apt package versions from trixie/trixie-security for every tool and lib copied out of deb-builder, package versions read from the `distroless/base-debian13` image itself, and the Go toolchain version), used purely for *drift detection*. Versions only, never image digests: base images get rebuilt with identical contents, and each digest change used to cut a release.
 
 - `scripts/upstream-lock.sh` recomputes the fingerprint from live sources.
 - `.github/workflows/upstream-check.yml` runs it daily, diffs against the committed `upstream.lock`, and if anything moved, opens a PR (as `dnb-robot[bot]`) updating `upstream.lock` and `.nordvpn-version`.
