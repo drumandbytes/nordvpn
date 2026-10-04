@@ -5,30 +5,20 @@
 # same Dockerfile builds a different image week to week. Watching the inputs
 # instead of a timer turns each upstream move into a normal release.
 #
+# Versions only, never image digests: base images get rebuilt with identical
+# contents, and every such rebuild used to cut a release.
+#
 # Output: sorted key=value, diffed against the committed upstream.lock.
 
 set -euo pipefail
 
+cd "$(dirname "$0")/.."
+
 # unattended daily run: without timeouts a stalled mirror holds the job for 6h
 CURL_OPTS=(-fsSL --connect-timeout 10 --max-time 180 --retry 2 --retry-delay 3)
 
-# --- the nordvpn client, from NordVPN's own apt channel -----------------------
-# Their Packages index is the only feed they publish.
-nordvpn_version() {
-  curl "${CURL_OPTS[@]}" https://repo.nordvpn.com/deb/nordvpn/debian/dists/stable/main/binary-amd64/Packages \
-    | awk '/^Package: nordvpn$/{p=1;next} /^$/{p=0} p&&/^Version:/{print $2}' \
-    | sort -V | tail -n1
-}
-
-# --- base image digests ------------------------------------------------------
-# By digest: distroless/base-debian13 is pinned to :latest, which Dependabot
-# never sees move. timeout only if available (macOS lacks it by default).
+# timeout only if available (macOS lacks it by default)
 TIMEOUT=(); command -v timeout >/dev/null 2>&1 && TIMEOUT=(timeout 120)
-
-image_digest() {
-  # ${arr[@]+"${arr[@]}"}: an empty array is unbound under set -u on macOS's old bash
-  ${TIMEOUT[@]+"${TIMEOUT[@]}"} docker buildx imagetools inspect "$1" --format '{{.Manifest.Digest}}'
-}
 
 # Every lookup goes through add(): a failed curl inside `echo "key=$(...)"`
 # still exits 0, writing a lock of blanks (a PR a day, or masked changes).
@@ -44,9 +34,43 @@ add() {
   LOCK+="${key}=${value}"$'\n'
 }
 
+# --- the nordvpn client, from NordVPN's own apt channel -----------------------
+# Their Packages index is the only feed they publish.
+nordvpn_version() {
+  curl "${CURL_OPTS[@]}" https://repo.nordvpn.com/deb/nordvpn/debian/dists/stable/main/binary-amd64/Packages \
+    | awk '/^Package: nordvpn$/{p=1;next} /^$/{p=0} p&&/^Version:/{print $2}' \
+    | sort -V | tail -n1
+}
+
+# --- Go toolchain --------------------------------------------------------------
+# The entrypoint is a static binary, so the golang image only matters through
+# its Go version (stdlib fixes). Minor comes from the Dockerfile so Dependabot's
+# tag bumps carry over.
+go_version() {
+  local minor
+  minor=$(sed -n 's/^FROM golang:\([0-9.]*\)-.*/\1/p' Dockerfile)
+  [ -n "$minor" ] || return 0
+  curl "${CURL_OPTS[@]}" 'https://go.dev/dl/?mode=json&include=all' \
+    | jq -r --arg p "go${minor}." \
+        '[.[] | select(.stable) | .version | select(startswith($p))][0] // empty'
+}
+
+# --- distroless runtime packages ---------------------------------------------
+# Read from the image itself: Debian publishes fixes before distroless
+# republishes, and releasing on Debian's version would ship the old package.
+distroless_packages() {
+  local cid
+  cid=$(${TIMEOUT[@]+"${TIMEOUT[@]}"} docker create --platform linux/amd64 \
+    gcr.io/distroless/base-debian13:latest none)
+  ${TIMEOUT[@]+"${TIMEOUT[@]}"} docker cp "${cid}:/var/lib/dpkg/status.d" - \
+    | tar -xO \
+    | awk '$1=="Package:"{p=$2} $1=="Version:"{print p"="$2}'
+  docker rm "$cid" >/dev/null
+}
+
 # --- apt dependency versions -------------------------------------------------
-# Takes the higher of trixie and trixie-security: security updates change no
-# tag we track elsewhere.
+# Takes the higher of trixie and trixie-security: deb-builder runs
+# apt-get upgrade, so that's exactly what gets copied.
 #
 # Main serves Packages.gz, security only Packages.xz; try both, since a 404
 # here silently falls back to the main-suite version. Download to a file
@@ -66,31 +90,40 @@ fetch_index() {
   gunzip -c "$tmp"
 }
 
+# Fetched once, not per package: each index is ~10MB.
+MAIN_INDEX=$(mktemp)
+SECURITY_INDEX=$(mktemp)
+trap 'rm -f "$MAIN_INDEX" "$SECURITY_INDEX"' EXIT
+fetch_index "http://deb.debian.org/debian/dists/trixie/main/binary-amd64/Packages" > "$MAIN_INDEX"
+fetch_index "http://security.debian.org/debian-security/dists/trixie-security/main/binary-amd64/Packages" > "$SECURITY_INDEX"
+
 apt_version() {
-  local pkg="$1" v=""
-  for base in \
-    "http://deb.debian.org/debian/dists/trixie/main/binary-amd64/Packages" \
-    "http://security.debian.org/debian-security/dists/trixie-security/main/binary-amd64/Packages"
-  do
-    v+=$(fetch_index "$base" \
-      | awk -v p="$pkg" '$1=="Package:" {m=($2==p)} m&&$1=="Version:"{print $2}' \
-      | sort -V | tail -n1)$'\n'
-  done
-  printf '%s' "$v" | grep -v '^$' | sort -V | tail -n1
+  awk -v p="$1" '$1=="Package:" {m=($2==p)} m&&$1=="Version:"{print $2}' \
+    "$MAIN_INDEX" "$SECURITY_INDEX" \
+    | sort -V | tail -n1
 }
 
 add "nordvpn" "$(nordvpn_version)"
+add "go" "$(go_version)"
 
-for img in \
-  "debian:trixie-slim" \
-  "golang:1.27-trixie" \
-  "gcr.io/distroless/base-debian13:latest"
+DISTROLESS=$(distroless_packages)
+if [ -z "$DISTROLESS" ]; then
+  echo "upstream-lock: could not resolve distroless packages" >&2
+  exit 1
+fi
+while IFS='=' read -r pkg ver; do
+  add "distroless:${pkg}" "$ver"
+done <<< "$DISTROLESS"
+
+# Everything copied out of deb-builder: the tools, plus the libs from the
+# Dockerfile's `for lib in` list by owning package. nordvpn is above.
+# ponytail: libs bundled in the .deb (/usr/lib/nordvpn) ride on the client version.
+for pkg in iptables iproute2 nftables procps wireguard-tools \
+  libbpf1 libbsd0 libcap-ng0 libcap2 libedit2 libelf1t64 libgcc-s1 libgmp10 \
+  libjansson4 libmd0 libmnl0 libnftables1 libnftnl11 libnl-3-200 \
+  libnl-genl-3-200 libpcre2-8-0 libproc2-0 libselinux1 libsqlite3-0 \
+  libsystemd0 libtinfo6 libxtables12 zlib1g
 do
-  add "image:${img}" "$(image_digest "$img")"
-done
-
-# The runtime binaries copied out of deb-builder. nordvpn itself is above.
-for pkg in iptables iproute2 nftables procps wireguard-tools; do
   add "apt:${pkg}" "$(apt_version "$pkg")"
 done
 
