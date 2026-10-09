@@ -36,5 +36,5 @@ distroless:netbase=6.5
 distroless:tzdata-legacy=2026c-0+deb13u1
 distroless:tzdata=2026c-0+deb13u1
 distroless:zlib1g=1:1.3.dfsg+really1.3.1-1+b1
-go=go1.27.1
+go=go1.27.2
 nordvpn=5.4.0
