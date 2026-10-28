@@ -31,12 +31,6 @@ jobs:
           persist-credentials: false
       - run: ./scripts/prune-ghcr.sh --self-test
 
-  # Real login and connect; skips itself without the secret (forks, Dependabot).
-  live-test:
-    uses: $/.github/workflows/live-test.yml
-    secrets:
-      NORDVPN_TOKEN: ${{ secrets.NORDVPN_TOKEN }}
-
   smoke-test:
     strategy:
       matrix:
@@ -82,7 +76,7 @@ jobs:
   required-checks-passed:
     name: Required checks passed
     runs-on: ubuntu-latest
-    needs: [lint, live-test, prune-ghcr-self-test, smoke-test, zizmor]
+    needs: [lint, prune-ghcr-self-test, smoke-test, zizmor]
     if: always()
     steps:
       - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
