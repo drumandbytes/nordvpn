@@ -13,7 +13,7 @@ func TestEntries(t *testing.T) {
 		{"", nil},
 		{"  ;; ", nil},
 		{"killswitch on", [][]string{{"killswitch", "on"}}},
-		{"killswitch on; technology nordlynx ;", [][]string{{"killswitch", "on"}, {"technology", "nordlynx"}}},
+		{"killswitch on; protocol nordlynx ;", [][]string{{"killswitch", "on"}, {"protocol", "nordlynx"}}},
 		{"subnet 10.244.0.0/16;port 8191 protocol TCP", [][]string{{"subnet", "10.244.0.0/16"}, {"port", "8191", "protocol", "TCP"}}},
 	}
 	for _, test := range tests {

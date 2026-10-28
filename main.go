@@ -154,7 +154,7 @@ func runCLI(warnMsg string, args ...string) {
 	}
 }
 
-// entries splits "killswitch on; technology nordlynx" into CLI arg lists.
+// entries splits "killswitch on; protocol nordlynx" into CLI arg lists.
 // Only `set`/`allowlist add` ever receive them, so env can't reach other verbs.
 func entries(value string) [][]string {
 	var out [][]string
