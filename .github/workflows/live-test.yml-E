@@ -1,0 +1,40 @@
+name: Live test
+
+# Real login + connect against NordVPN with an account token.
+# Deliberately not part of Validate: the token lives in the `live-test`
+# Environment, which only `main` can deploy to, so no PR (same-repo or fork)
+# can read it. It runs after merge, nightly, by hand, and as the gate in front
+# of publishing a release (build.yml). A missing token fails the job on purpose:
+# a skipped gate would let an untested release through.
+
+on:
+  workflow_call:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One at a time: runs share the account's device limit.
+concurrency:
+  group: live-test
+  cancel-in-progress: false
+
+jobs:
+  live-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: live-test
+    env:
+      NORDVPN_TOKEN: ${{ secrets.NORDVPN_TOKEN }}
+    steps:
+      -         uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      -         run: docker build -t nordvpn:live .
+
+      -         run: ./scripts/live-test.sh nordvpn:live

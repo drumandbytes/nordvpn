@@ -4,7 +4,8 @@ name: Live test
 # Deliberately not part of Validate: the token lives in the `live-test`
 # Environment, which only `main` can deploy to, so no PR (same-repo or fork)
 # can read it. It runs after merge, nightly, by hand, and as the gate in front
-# of publishing a release (build.yml); without the secret every step is skipped.
+# of publishing a release (build.yml). A missing token fails the job on purpose:
+# a skipped gate would let an untested release through.
 
 on:
   workflow_call:
@@ -30,13 +31,10 @@ jobs:
     env:
       NORDVPN_TOKEN: ${{ secrets.NORDVPN_TOKEN }}
     steps:
-      - if: env.NORDVPN_TOKEN != ''
-        uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
-      - if: env.NORDVPN_TOKEN != ''
-        run: docker build -t nordvpn:live .
+      - run: docker build -t nordvpn:live .
 
-      - if: env.NORDVPN_TOKEN != ''
-        run: ./scripts/live-test.sh nordvpn:live
+      - run: ./scripts/live-test.sh nordvpn:live
