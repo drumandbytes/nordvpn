@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.9](https://github.com/drumandbytes/nordvpn/compare/v1.2.8...v1.2.9) (2026-10-28)
+
+
+### Bug Fixes
+
+* support OpenVPN and unprivileged VPN tunnels ([#69](https://github.com/drumandbytes/nordvpn/issues/69)) ([e298f28](https://github.com/drumandbytes/nordvpn/commit/e298f284b8416c49ba1c1251701c570841e09cd5))
+
 ## [1.2.8](https://github.com/drumandbytes/nordvpn/compare/v1.2.7...v1.2.8) (2026-10-28)
 
 
