@@ -51,6 +51,11 @@ jobs:
             [ -f upstream.lock ] && diff upstream.lock /tmp/upstream.lock.new || true
           fi
 
+          # A major client bump (6.0 removed CLI verbs) must not auto-merge.
+          OLD_MAJOR=$(cut -d. -f1 .nordvpn-version)
+          NEW_MAJOR=$(awk -F'[=.]' '/^nordvpn=/{print $2}' /tmp/upstream.lock.new)
+          [ "$OLD_MAJOR" = "$NEW_MAJOR" ] || echo "major=true" >> "$GITHUB_OUTPUT"
+
           # The client version titles the PR when it's what moved.
           awk -F= '/^nordvpn=/{print "client="$2}' /tmp/upstream.lock.new >> "$GITHUB_OUTPUT"
 
@@ -58,6 +63,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           CLIENT: ${{ steps.check.outputs.client }}
+          MAJOR: ${{ steps.check.outputs.major }}
         run: |
           BRANCH="upstream/$(date -u +%Y%m%d-%H%M%S)"
           git config user.name "dnb-robot[bot]"
@@ -71,6 +77,8 @@ jobs:
           git commit -m "fix(deps): upstream inputs changed (client ${CLIENT})"
           git push -u origin "$BRANCH"
 
-          gh pr create --base main --head "$BRANCH" \
+          # a draft can't be auto-merged: a human reviews the release notes first
+          DRAFT=(); [ -z "$MAJOR" ] || DRAFT=(--draft)
+          gh pr create "${DRAFT[@]}" --base main --head "$BRANCH" \
             --title "fix(deps): upstream inputs changed (client ${CLIENT})" \
             --body "$(printf 'One or more upstream inputs moved. Merging cuts a patch release and rebuilds the image.\n\n```diff\n%s\n```\n' "$(git diff HEAD~1 -- upstream.lock | tail -n +5)")"
