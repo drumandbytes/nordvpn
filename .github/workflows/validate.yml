@@ -33,7 +33,7 @@ jobs:
 
   # Real login and connect; skips itself without the secret (forks, Dependabot).
   live-test:
-    uses: ./.github/workflows/live-test.yml
+    uses: \$/.github/workflows/live-test.yml
     secrets:
       NORDVPN_TOKEN: ${{ secrets.NORDVPN_TOKEN }}
 
