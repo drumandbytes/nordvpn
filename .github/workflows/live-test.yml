@@ -1,15 +1,12 @@
 name: Live test
 
-# Real login + connect against NordVPN, on a dedicated account's token.
-# Called from Validate (so upstream-check PRs are gated on it) and run on main,
-# nightly and by hand. Without the secret every step is skipped, which is what
-# fork and Dependabot PRs get: GitHub withholds secrets from both.
+# Real login + connect against NordVPN with an account token.
+# Deliberately not part of Validate: the token lives in the `live-test`
+# Environment, which only `main` can deploy to, so no PR (same-repo or fork)
+# can read it. It runs after merge, nightly and by hand; without the secret
+# every step is skipped.
 
 on:
-  workflow_call:
-    secrets:
-      NORDVPN_TOKEN:
-        required: false
   push:
     branches: [main]
   schedule:
@@ -28,6 +25,7 @@ jobs:
   live-test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    environment: live-test
     env:
       NORDVPN_TOKEN: ${{ secrets.NORDVPN_TOKEN }}
     steps:

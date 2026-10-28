@@ -12,7 +12,7 @@ go vet ./...
 docker build -t nordvpn .
 ```
 
-CI (`validate.yml`) runs `drumandbytes/reusable-actions` go-ci + a smoke test that boots the built image with no config and checks it doesn't crash. `validate.yml` also runs `scripts/cli-check.sh` (every CLI verb the entrypoint/README uses still exists; amd64 + arm64) and a `live-test` job (`scripts/live-test.sh`: real login, NordLynx/OpenVPN UDP+TCP connect, Meshnet, on the dedicated account's `NORDVPN_TOKEN` secret; skipped when the secret is absent, i.e. fork/Dependabot PRs; also runs on main and nightly). A major client bump makes `upstream-check` open a draft PR so it can't auto-merge.
+CI (`validate.yml`) runs `drumandbytes/reusable-actions` go-ci + a smoke test that boots the built image with no config and checks it doesn't crash. `validate.yml` also runs `scripts/cli-check.sh` (every CLI verb the entrypoint/README uses still exists; amd64 + arm64) and, as its own workflow `live-test.yml`, `scripts/live-test.sh` (real login, NordLynx/OpenVPN UDP+TCP connect, Meshnet). It runs on push to main, nightly and by hand, never on PRs: `NORDVPN_TOKEN` lives in the `live-test` Environment, restricted to `main`, so PR code can't read it. A broken client release is therefore caught after merge, not before. A major client bump makes `upstream-check` open a draft PR so it can't auto-merge.
 
 The Trivy image scan is its own workflow (`security.yml`: PRs plus a weekly run on main), kept out of `validate.yml` so a CVE can't block every Dependabot merge — auto-merge gates on Validate.
 
