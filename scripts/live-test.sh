@@ -24,6 +24,16 @@ trap cleanup EXIT
 
 nordvpn() { docker exec "$NAME" /usr/bin/nordvpn "$@"; }
 
+# A device can't remove itself from Meshnet, and logout leaves it registered
+# (the account has a 10-device limit). Another device can: each run removes the
+# ci-* devices earlier runs left behind, so at most one stays.
+purge_stale_meshnet() {
+  local own="$1" nick
+  while read -r nick; do
+    [ "$nick" = "$own" ] || nordvpn meshnet peer remove "$nick" || true
+  done < <(nordvpn meshnet peer list | awk '/^Nickname: ci-/{print $2}')
+}
+
 # run <label> <expected status regex> <docker run -e args...>
 run_case() {
   local label="$1" want="$2"
@@ -49,6 +59,7 @@ run_case() {
     echo "::endgroup::"
     exit 1
   fi
+  [ "$label" != meshnet ] || purge_stale_meshnet "ci-${GITHUB_RUN_ID:-local}"
   echo "ok"
   echo "::endgroup::"
   cleanup
