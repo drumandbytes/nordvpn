@@ -2,22 +2,76 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
 )
 
-const nordvpnBin = "/usr/bin/nordvpn"
+const (
+	nordvpnBin = "/usr/bin/nordvpn"
+	// the real sysctl, moved aside: /usr/sbin/sysctl is this binary (see sysctlShim)
+	realSysctl = "/usr/sbin/sysctl.real"
+)
 
 func main() {
+	if filepath.Base(os.Args[0]) == "sysctl" {
+		os.Exit(sysctlShim(os.Args[1:], "/proc/sys"))
+	}
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
 		os.Exit(healthcheck())
 	}
 	run()
+}
+
+// nordvpnd shells out to sysctl by name and aborts the connect when a write
+// fails. /proc/sys is read-only in unprivileged containers even for writes that
+// change nothing, so a value preset at container start (docker --sysctl,
+// pod securityContext.sysctls) would still fail. Succeed when the requested
+// values are already in place; otherwise behave like the real tool.
+func sysctlShim(args []string, procRoot string) int {
+	var stdout, stderr bytes.Buffer
+	cmd := exec.Command(realSysctl, args...)
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	err := cmd.Run()
+	if err != nil && sysctlApplied(args, procRoot) {
+		err = nil
+		stdout.Reset()
+		stderr.Reset()
+	}
+	_, _ = os.Stdout.Write(stdout.Bytes())
+	_, _ = os.Stderr.Write(stderr.Bytes())
+	if err == nil {
+		return 0
+	}
+	if ee, ok := err.(*exec.ExitError); ok {
+		return ee.ExitCode()
+	}
+	return 1
+}
+
+// sysctlApplied reports whether every key=value in args already holds. False
+// when there is nothing to compare, so a failed read is never masked.
+// ponytail: dots in interface names (eth0.100) mis-map to '/'; none of nordvpnd's keys have them.
+func sysctlApplied(args []string, procRoot string) bool {
+	found := false
+	for _, a := range args {
+		key, want, ok := strings.Cut(a, "=")
+		if !ok || strings.HasPrefix(key, "-") {
+			continue
+		}
+		found = true
+		got, err := os.ReadFile(filepath.Join(procRoot, strings.ReplaceAll(key, ".", "/")))
+		if err != nil || strings.Join(strings.Fields(string(got)), " ") != strings.Join(strings.Fields(want), " ") {
+			return false
+		}
+	}
+	return found
 }
 
 // healthy if a VPN tunnel is connected or Meshnet is enabled
