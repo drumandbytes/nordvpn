@@ -122,7 +122,8 @@ for pkg in iptables iproute2 nftables procps wireguard-tools \
   libbpf1 libbsd0 libcap-ng0 libcap2 libedit2 libelf1t64 libgcc-s1 libgmp10 \
   libjansson4 libmd0 libmnl0 libnftables1 libnftnl11 libnl-3-200 \
   libnl-genl-3-200 libpcre2-8-0 libproc2-0 libselinux1 libsqlite3-0 \
-  libsystemd0 libtinfo6 libxtables12 zlib1g
+  libsystemd0 libtinfo6 libxtables12 zlib1g \
+  xsltproc libxslt1.1 libxml2 libgcrypt20 liblzma5 libgpg-error0
 do
   add "apt:${pkg}" "$(apt_version "$pkg")"
 done

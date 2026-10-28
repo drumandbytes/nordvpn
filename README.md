@@ -29,6 +29,7 @@ The Go entrypoint also does one thing the old shell version didn't: since it's P
 docker run -d \
   --cap-add=NET_ADMIN --cap-add=NET_RAW \
   --device=/dev/net/tun \
+  --sysctl net.ipv6.conf.all.disable_ipv6=1 --sysctl net.ipv4.conf.all.arp_ignore=1 \
   -e NORDVPN_TOKEN=<your access token> \
   -e NORDVPN_CONNECT=Netherlands \
   ghcr.io/drumandbytes/nordvpn:latest
@@ -48,6 +49,7 @@ Kill switch on, cluster traffic and probe ports allowed through, connected befor
 docker run -d \
   --cap-add=NET_ADMIN --cap-add=NET_RAW \
   --device=/dev/net/tun \
+  --sysctl net.ipv6.conf.all.disable_ipv6=1 --sysctl net.ipv4.conf.all.arp_ignore=1 \
   -e NORDVPN_TOKEN=<your access token> \
   -e NORDVPN_ALLOWLIST="subnet 10.244.0.0/16; subnet 10.96.0.0/12; port 8080" \
   -e NORDVPN_SET="killswitch on; technology nordlynx" \
@@ -130,7 +132,7 @@ Put other containers in the same Pod spec to share this one's network — contai
 
 The host kernel needs iptables/netfilter modules available — the NordVPN client uses `iptables` internally to route and firewall its traffic.
 
-**Meshnet specifically needs more than `NET_ADMIN`/`NET_RAW`.** Its routing setup writes `net.ipv4.conf.all.rp_filter`, which stays read-only under Kubernetes/Docker regardless of those capabilities — confirmed directly, including that Docker's own `--sysctl` flag only sets the *initial* value, not ongoing write access. Nothing short of `securityContext.privileged: true` unlocks it. A plain VPN tunnel (`NORDVPN_CONNECT` without `NORDVPN_MESHNET`) doesn't hit this and works fine with just the two capabilities above.
+**Container sysctls.** Connecting makes `nordvpnd` write `net.ipv6.conf.all.disable_ipv6=1` and `net.ipv4.conf.all.arp_ignore=1` (Meshnet also `net.ipv4.conf.all.rp_filter=2`), and it aborts the connect if a write fails. `/proc/sys` is read-only in unprivileged containers, even for a write that changes nothing, so without help `NORDVPN_CONNECT` fails with `sysctl: permission denied`. The image's `sysctl` wrapper accepts a write whose value is already in place, so preset the values at container start: `--sysctl net.ipv6.conf.all.disable_ipv6=1 --sysctl net.ipv4.conf.all.arp_ignore=1` as in the examples above (`rp_filter` is already 2 by default on Docker). In Kubernetes these go in `securityContext.sysctls`, which needs the kubelet to allow them (`--allowed-unsafe-sysctls=net.ipv6.conf.all.*,net.ipv4.conf.all.*`). `securityContext.privileged: true` also works, without presets. If you'd rather not preset `arp_ignore`, `NORDVPN_SET="arp-ignore off"` skips that write, at the cost of that protection.
 
 ### Extracting the WireGuard key (e.g. for gluetun)
 

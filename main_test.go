@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 )
@@ -33,6 +35,32 @@ func TestAlreadyDone(t *testing.T) {
 	} {
 		if got := alreadyDone([]byte(out)); got != want {
 			t.Errorf("alreadyDone(%q) = %v, want %v", out, got, want)
+		}
+	}
+}
+
+func TestSysctlApplied(t *testing.T) {
+	root := t.TempDir()
+	key := filepath.Join(root, "net/ipv6/conf/all")
+	if err := os.MkdirAll(key, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(key, "disable_ipv6"), []byte("1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		args []string
+		want bool
+	}{
+		{[]string{"-w", "net.ipv6.conf.all.disable_ipv6=1"}, true},
+		{[]string{"net.ipv6.conf.all.disable_ipv6=1"}, true},
+		{[]string{"-w", "net.ipv6.conf.all.disable_ipv6=0"}, false},
+		{[]string{"-w", "net.ipv6.conf.all.missing=1"}, false},
+		{[]string{"-n", "net.ipv6.conf.all.disable_ipv6"}, false},
+		{nil, false},
+	} {
+		if got := sysctlApplied(test.args, root); got != test.want {
+			t.Errorf("sysctlApplied(%q) = %v, want %v", test.args, got, test.want)
 		}
 	}
 }

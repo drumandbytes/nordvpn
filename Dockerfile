@@ -1,7 +1,9 @@
 # Install the real .deb on Debian, build a Go entrypoint (distroless has no
 # shell), then copy only the binaries and the libraries ldd reports onto
 # distroless. Not everything shows up in ldd: nordvpnd shells out by name to
-# nft, sysctl and ps (procps) during connect/meshnet, so those are copied too.
+# nft, sysctl and ps (procps) during connect/meshnet, and to xsltproc when
+# generating OpenVPN configs, so those are copied too. sysctl is wrapped by the
+# entrypoint binary; the real one is kept as sysctl.real.
 #
 # nordvpn and its apt deps are deliberately unpinned: the image tracks
 # NordVPN's stable channel; upstream-check.yml rebuilds when an input moves.
@@ -44,8 +46,9 @@ RUN set -eu; \
     cp /etc/group.distroless-base /staging/etc/group; \
     grep '^nordvpn:' /etc/group >> /staging/etc/group; \
     cp /usr/bin/nordvpn /usr/bin/wg /staging/usr/bin/; \
-    cp /usr/bin/ps /staging/usr/bin/; \
-    cp /usr/sbin/nordvpnd /usr/sbin/iptables /usr/sbin/ip /usr/sbin/nft /usr/sbin/sysctl /staging/usr/sbin/; \
+    cp /usr/bin/ps /usr/bin/xsltproc /staging/usr/bin/; \
+    cp /usr/sbin/nordvpnd /usr/sbin/iptables /usr/sbin/ip /usr/sbin/nft /staging/usr/sbin/; \
+    cp /usr/sbin/sysctl /staging/usr/sbin/sysctl.real; \
     cp -r /usr/lib/nordvpn/. /staging/usr/lib/nordvpn/; \
     cp -r /var/lib/nordvpn/data/. /staging/var/lib/nordvpn/data/; \
     for lib in \
@@ -55,7 +58,8 @@ RUN set -eu; \
       libselinux.so.1 libpcre2-8.so.0 \
       libnftables.so.1 libedit.so.2 libjansson.so.4 libgmp.so.10 \
       libtinfo.so.6 libbsd.so.0 libmd.so.0 \
-      libproc2.so.0 libsystemd.so.0; \
+      libproc2.so.0 libsystemd.so.0 \
+      libxslt.so.1 libexslt.so.0 libxml2.so.2 libgcrypt.so.20 liblzma.so.5 libgpg-error.so.0; \
     do \
       cp "/lib/${triplet}/${lib}" "/staging/usr/lib/${triplet}/"; \
     done
@@ -76,5 +80,7 @@ COPY --from=deb-builder /staging/ /
 ENV LD_LIBRARY_PATH=/usr/lib/nordvpn
 
 COPY --from=go-builder /entrypoint /entrypoint
+# sysctl shim, see sysctlShim in main.go (the real one is sysctl.real)
+COPY --from=go-builder /entrypoint /usr/sbin/sysctl
 
 ENTRYPOINT ["/entrypoint"]
