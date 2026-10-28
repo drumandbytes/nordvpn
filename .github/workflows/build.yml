@@ -14,9 +14,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Nothing is published unless a real login + connect works on this tag.
+  live-test:
+    permissions:
+      contents: read
+    uses: $/.github/workflows/live-test.yml
+
   # One native job per architecture (QEMU was far slower). Each pushes an
   # untagged image by digest; only the merge job tags, so builds can't race.
   build:
+    needs: live-test
     strategy:
       fail-fast: false
       matrix:

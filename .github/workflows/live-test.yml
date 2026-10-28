@@ -3,10 +3,11 @@ name: Live test
 # Real login + connect against NordVPN with an account token.
 # Deliberately not part of Validate: the token lives in the `live-test`
 # Environment, which only `main` can deploy to, so no PR (same-repo or fork)
-# can read it. It runs after merge, nightly and by hand; without the secret
-# every step is skipped.
+# can read it. It runs after merge, nightly, by hand, and as the gate in front
+# of publishing a release (build.yml); without the secret every step is skipped.
 
 on:
+  workflow_call:
   push:
     branches: [main]
   schedule:
