@@ -1,0 +1,43 @@
+name: Live test
+
+# Real login + connect against NordVPN, on a dedicated account's token.
+# Called from Validate (so upstream-check PRs are gated on it) and run on main,
+# nightly and by hand. Without the secret every step is skipped, which is what
+# fork and Dependabot PRs get: GitHub withholds secrets from both.
+
+on:
+  workflow_call:
+    secrets:
+      NORDVPN_TOKEN:
+        required: false
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One at a time: runs share the account's device limit.
+concurrency:
+  group: live-test
+  cancel-in-progress: false
+
+jobs:
+  live-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NORDVPN_TOKEN: ${{ secrets.NORDVPN_TOKEN }}
+    steps:
+      - if: env.NORDVPN_TOKEN != ''
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - if: env.NORDVPN_TOKEN != ''
+        run: docker build -t nordvpn:live .
+
+      - if: env.NORDVPN_TOKEN != ''
+        run: ./scripts/live-test.sh nordvpn:live
