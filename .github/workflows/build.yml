@@ -14,16 +14,47 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Nothing is published unless a real login + connect works on this tag.
-  live-test:
+  # Nothing is published unless the live test passed on this exact commit.
+  # The test itself can't run here: its token lives in an Environment that only
+  # `main` can deploy to, and a tag ref can't read it. The push-to-main run for
+  # the same SHA is the proof; release-please tags right after the merge, so it
+  # is usually still running and we wait for it.
+  live-test-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
-      contents: read
-    uses: $/.github/workflows/live-test.yml
+      actions: read
+    steps:
+      - name: Wait for a green Live test on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          deadline=$((SECONDS + 1500))
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            runs=$(gh run list --workflow live-test.yml --commit "$SHA" \
+              --json status,conclusion,url)
+            if jq -e 'any(.[]; .conclusion == "success")' <<< "$runs" > /dev/null; then
+              echo "Live test passed on $SHA"
+              exit 0
+            fi
+            if jq -e 'length > 0 and all(.[]; .status == "completed")' <<< "$runs" > /dev/null; then
+              echo "::error::Live test did not pass on $SHA"
+              jq -r '.[].url' <<< "$runs"
+              exit 1
+            fi
+            echo "No finished Live test for $SHA yet, waiting"
+            sleep 30
+          done
+          echo "::error::Timed out waiting for a Live test run on $SHA"
+          exit 1
+        shell: bash
 
   # One native job per architecture (QEMU was far slower). Each pushes an
   # untagged image by digest; only the merge job tags, so builds can't race.
   build:
-    needs: live-test
+    needs: live-test-gate
     strategy:
       fail-fast: false
       matrix:

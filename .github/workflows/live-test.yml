@@ -3,12 +3,12 @@ name: Live test
 # Real login + connect against NordVPN with an account token.
 # Deliberately not part of Validate: the token lives in the `live-test`
 # Environment, which only `main` can deploy to, so no PR (same-repo or fork)
-# can read it. It runs after merge, nightly, by hand, and as the gate in front
-# of publishing a release (build.yml). A missing token fails the job on purpose:
+# can read it. It runs after merge, nightly and by hand; build.yml gates
+# publishing on a green run for the release commit (a tag ref can't read the
+# Environment, so it can't run the test itself). A missing token fails on purpose:
 # a skipped gate would let an untested release through.
 
 on:
-  workflow_call:
   push:
     branches: [main]
   schedule:
