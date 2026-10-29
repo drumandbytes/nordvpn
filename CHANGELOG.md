@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.11](https://github.com/drumandbytes/nordvpn/compare/v1.2.10...v1.2.11) (2026-10-29)
+
+
+### Bug Fixes
+
+* **ci:** gate release on the main Live test run instead of re-running it on the tag ([#77](https://github.com/drumandbytes/nordvpn/issues/77)) ([68e420d](https://github.com/drumandbytes/nordvpn/commit/68e420d64f670e806e25223e6999ef98bb42bc6a))
+
 ## [1.2.10](https://github.com/drumandbytes/nordvpn/compare/v1.2.9...v1.2.10) (2026-10-29)
 
 
