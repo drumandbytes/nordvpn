@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.13](https://github.com/drumandbytes/nordvpn/compare/v1.2.12...v1.2.13) (2026-11-07)
+
+
+### Bug Fixes
+
+* **deps:** upstream inputs changed (client 6.0.2) ([#82](https://github.com/drumandbytes/nordvpn/issues/82)) ([c1be3e3](https://github.com/drumandbytes/nordvpn/commit/c1be3e37ec2f0976c1fa24e97eedfd4a334d94c2))
+
 ## [1.2.12](https://github.com/drumandbytes/nordvpn/compare/v1.2.11...v1.2.12) (2026-11-01)
 
 
