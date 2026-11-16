@@ -7,7 +7,14 @@ A minimal, actively-rebuilt container image for the official [NordVPN](https://n
 
 ## Why this exists
 
-The existing community images ([`bubuntux/nordvpn`](https://github.com/bubuntux/nordvpn), [`MattsTechInfo/Meshnet`](https://github.com/MattsTechInfo/Meshnet), [`DPflasterer/nordvpn-meshnet`](https://github.com/DPflasterer/nordvpn-meshnet)) are all 2-4 years stale. There's nothing complex to the client itself — install the official `nordvpn` package, run `nordvpnd` in the foreground instead of under systemd, drive it with the CLI — so this image just does that, and a weekly GitHub Actions build keeps it tracking whatever's current in NordVPN's `stable` apt channel.
+The most widely used community image, [`bubuntux/nordvpn`](https://github.com/bubuntux/nordvpn) (about 800 stars), is archived and its README says the repository is not maintained (as of November 2026). The Meshnet-specific images, [`MattsTechInfo/Meshnet`](https://github.com/MattsTechInfo/Meshnet) and [`DPflasterer/nordvpn-meshnet`](https://github.com/DPflasterer/nordvpn-meshnet), were last updated in February and August 2025. There's nothing complex to the client itself — install the official `nordvpn` package, run `nordvpnd` in the foreground instead of under systemd, drive it with the CLI — so this image just does that, and a weekly GitHub Actions build keeps it tracking whatever's current in NordVPN's `stable` apt channel.
+
+How it differs:
+
+- **Maintained and rebuilt weekly**, installed fresh from NordVPN's apt repo, with a tracked upstream version.
+- **Distroless, no shell**: about 40% smaller than the full Debian image, with a much smaller CVE surface (details below).
+- **A small Go entrypoint as PID 1** instead of shell scripts; it reaps the child processes `nordvpnd` leaves behind.
+- **Meshnet and plain VPN in one image**, and it can run as a gluetun-style sidecar with an allowlist and kill switch (see Usage).
 
 ## How it's built
 
