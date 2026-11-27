@@ -11,8 +11,8 @@ Image tags:
 
 | Tag | Source | Meaning |
 | --- | --- | --- |
-| `:latest`, `:YYYYMMDD` | `main` pushes + the weekly cron | rolling — this repo's `main` + whatever the NordVPN apt repo had at build time |
-| `:X.Y.Z`, `:X.Y` | release-please tags | pinned — frozen to that release's source + apt state |
+| `:latest`, `:YYYYMMDD` | `main` pushes + the weekly cron | rolling, this repo's `main` + whatever the NordVPN apt repo had at build time |
+| `:X.Y.Z`, `:X.Y` | release-please tags | pinned, frozen to that release's source + apt state |
 
 **Squash-merge every PR** with a
 [Conventional Commits](https://www.conventionalcommits.org/) title:

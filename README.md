@@ -24,7 +24,7 @@ Three-stage `Dockerfile`:
 2. **`go-builder`**: compiles a small Go binary (`main.go`) that replaces the old shell `entrypoint.sh`/`healthcheck.sh`. Distroless has no shell at all, so the entrypoint has to be a real binary.
 3. **Final stage**: `gcr.io/distroless/base-debian13`: no apt, no shell, no package manager. Just the specific binaries and shared libraries this needs, `COPY`'d in explicitly from `deb-builder` (the exact file list came from inspecting the real package with `dpkg -L nordvpn` and each binary's actual dependency graph with `ldd`, not guessed), plus the compiled entrypoint from `go-builder`.
 
-Net effect: ~40% smaller image, and a meaningfully smaller CVE surface than the full Debian image, since most of Debian's own userland (and its steady stream of base-package CVEs) never makes it into the final image at all.
+The result is an image about 40% smaller with a much smaller CVE surface than the full Debian image, since most of Debian's own userland, and its steady stream of base-package CVEs, never reaches the final image.
 
 The Go entrypoint also does one thing the old shell version didn't: since it's PID 1, it reaps any child process `nordvpnd` spawns and abandons (`nordfileshare`, `norduserd`, `openvpn`) instead of letting them accumulate as zombies, and forwards `SIGTERM`/`SIGINT` to `nordvpnd` properly.
 
@@ -88,8 +88,8 @@ Generate an access token: NordVPN account → Meshnet (or VPN) → Manual setup 
 | `NORDVPN_CONNECT` | Connects to a VPN server. Empty value = recommended server; otherwise a country/city/server/group, anything `nordvpn connect` itself accepts. Unset by default (no VPN tunnel). Flags pass through too: `--group Double_VPN Netherlands`. |
 | `NORDVPN_MESHNET` | `on` to enable Meshnet. Unset/anything else = off. |
 | `NORDVPN_NICKNAME` | Sets this device's Meshnet nickname (`nordvpn meshnet set nickname`). Only applies when `NORDVPN_MESHNET=on`. Without one, every restart can show up as a new device unless state is persisted. |
-| `NORDVPN_FIREWALL` | `on` or `off`. Unset by default — leaves the client's own default behavior alone. If you're using `NORDVPN_MESHNET=on` **without** `NORDVPN_CONNECT` (Meshnet only, no VPN exit server), you probably want this set to `off` explicitly, since the killswitch otherwise blocks the container's normal non-tunnel traffic. |
-| `NORDVPN_LOG_LEVEL` | `debug`, `info` (default), `warn`, or `error`. `nordvpnd` defaults to its most verbose (`debug`) when it can't find a log-level file to read, which is always true on a fresh container — this just writes one before starting the daemon. |
+| `NORDVPN_FIREWALL` | `on` or `off`. Unset by default, which leaves the client's own default behavior alone. If you're using `NORDVPN_MESHNET=on` **without** `NORDVPN_CONNECT` (Meshnet only, no VPN exit server), you probably want this set to `off` explicitly, since the killswitch otherwise blocks the container's normal non-tunnel traffic. |
+| `NORDVPN_LOG_LEVEL` | `debug`, `info` (default), `warn`, or `error`. `nordvpnd` defaults to its most verbose (`debug`) when it can't find a log-level file to read, which is always true on a fresh container; this just writes one before starting the daemon. |
 | `NORDVPN_SET` | `;`-separated settings, each passed to `nordvpn set`: e.g. `killswitch on; protocol nordlynx; post-quantum on`. Anything `nordvpn set` accepts works (client 6.0 removed `technology` and `obfuscate`: use `protocol nordlynx\|openvpn_udp\|openvpn_tcp\|nordwhisper`). Applied after login and before `NORDVPN_CONNECT`. |
 | `NORDVPN_ALLOWLIST` | `;`-separated entries, each passed to `nordvpn allowlist add`: e.g. `subnet 10.244.0.0/16; port 8080`. Applied **before** `NORDVPN_SET`, so a kill switch never cuts off what you allowlist. Replaces the whole allowlist each start (set it empty to clear); unset leaves it alone. |
 
@@ -135,9 +135,9 @@ volumes:
       claimName: nordvpn-state
 ```
 
-Put other containers in the same Pod spec to share this one's network, containers in a Pod share a network namespace natively, no extra config needed.
+To share this container's network, put the other containers in the same Pod spec: containers in a Pod share a network namespace natively, with no extra config.
 
-The host kernel needs iptables/netfilter modules available, the NordVPN client uses `iptables` internally to route and firewall its traffic.
+The host kernel needs the iptables/netfilter modules, because the NordVPN client uses `iptables` internally to route and firewall its traffic.
 
 **Container sysctls.** Connecting makes `nordvpnd` write `net.ipv6.conf.all.disable_ipv6=1` and `net.ipv4.conf.all.arp_ignore=1` (Meshnet also `net.ipv4.conf.all.rp_filter=2`), and it aborts the connect if a write fails. `/proc/sys` is read-only in unprivileged containers, even for a write that changes nothing, so without help `NORDVPN_CONNECT` fails with `sysctl: permission denied`. The image's `sysctl` wrapper accepts a write whose value is already in place, so preset the values at container start: `--sysctl net.ipv6.conf.all.disable_ipv6=1 --sysctl net.ipv4.conf.all.arp_ignore=1` as in the examples above (`rp_filter` is already 2 by default on Docker). In Kubernetes these go in `securityContext.sysctls`, which needs the kubelet to allow them (`--allowed-unsafe-sysctls=net.ipv6.conf.all.*,net.ipv4.conf.all.*`). `securityContext.privileged: true` also works, without presets. If you'd rather not preset `arp_ignore`, `NORDVPN_SET="arp-ignore off"` skips that write, at the cost of that protection.
 
