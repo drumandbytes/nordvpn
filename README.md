@@ -7,7 +7,7 @@ A minimal, actively-rebuilt container image for the official [NordVPN](https://n
 
 ## Why this exists
 
-The most widely used community image, [`bubuntux/nordvpn`](https://github.com/bubuntux/nordvpn) (about 800 stars), is archived and its README says the repository is not maintained (as of November 2026). The Meshnet-specific images, [`MattsTechInfo/Meshnet`](https://github.com/MattsTechInfo/Meshnet) and [`DPflasterer/nordvpn-meshnet`](https://github.com/DPflasterer/nordvpn-meshnet), were last updated in February and August 2025. There's nothing complex to the client itself, install the official `nordvpn` package, run `nordvpnd` in the foreground instead of under systemd, drive it with the CLI; so this image just does that, and a weekly GitHub Actions build keeps it tracking whatever's current in NordVPN's `stable` apt channel.
+The most widely used community image, [`bubuntux/nordvpn`](https://github.com/bubuntux/nordvpn) (about 800 stars), is archived and its README says the repository is not maintained (as of November 2026). The Meshnet-specific images, [`MattsTechInfo/Meshnet`](https://github.com/MattsTechInfo/Meshnet) and [`DPflasterer/nordvpn-meshnet`](https://github.com/DPflasterer/nordvpn-meshnet), were last updated in February and August 2025. There's nothing complex to the client itself: install the official `nordvpn` package, run `nordvpnd` in the foreground instead of under systemd, drive it with the CLI; so this image just does that, and a weekly GitHub Actions build keeps it tracking whatever's current in NordVPN's `stable` apt channel.
 
 How it differs:
 
@@ -20,7 +20,7 @@ How it differs:
 
 Three-stage `Dockerfile`:
 
-1. **`deb-builder`** (`debian:trixie-slim`), installs the real `nordvpn` package plus `iptables`/`iproute2`/`wireguard-tools`/`nftables`/`procps` via apt. Each of the latter two packages was added after something `nordvpnd` shells out to by bare name (PATH lookup) turned out to be missing, `nft` for firewall/routing setup during `connect`, `sysctl` for interface tuning, `ps` for norduserd's own process check, invisible until that specific code path was actually exercised.
+1. **`deb-builder`** (`debian:trixie-slim`): installs the real `nordvpn` package plus `iptables`/`iproute2`/`wireguard-tools`/`nftables`/`procps` via apt. Each of the latter two packages was added after something `nordvpnd` shells out to by bare name (PATH lookup) turned out to be missing: `nft` for firewall/routing setup during `connect`, `sysctl` for interface tuning, `ps` for norduserd's own process check, invisible until that specific code path was actually exercised.
 2. **`go-builder`**: compiles a small Go binary (`main.go`) that replaces the old shell `entrypoint.sh`/`healthcheck.sh`. Distroless has no shell at all, so the entrypoint has to be a real binary.
 3. **Final stage**: `gcr.io/distroless/base-debian13`: no apt, no shell, no package manager. Just the specific binaries and shared libraries this needs, `COPY`'d in explicitly from `deb-builder` (the exact file list came from inspecting the real package with `dpkg -L nordvpn` and each binary's actual dependency graph with `ldd`, not guessed), plus the compiled entrypoint from `go-builder`.
 

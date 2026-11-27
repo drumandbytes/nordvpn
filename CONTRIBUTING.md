@@ -11,8 +11,8 @@ Image tags:
 
 | Tag | Source | Meaning |
 | --- | --- | --- |
-| `:latest`, `:YYYYMMDD` | `main` pushes + the weekly cron | rolling, this repo's `main` + whatever the NordVPN apt repo had at build time |
-| `:X.Y.Z`, `:X.Y` | release-please tags | pinned, frozen to that release's source + apt state |
+| `:latest`, `:YYYYMMDD` | `main` pushes + the weekly cron | rolling: this repo's `main` + whatever the NordVPN apt repo had at build time |
+| `:X.Y.Z`, `:X.Y` | release-please tags | pinned: frozen to that release's source + apt state |
 
 **Squash-merge every PR** with a
 [Conventional Commits](https://www.conventionalcommits.org/) title:
@@ -33,4 +33,4 @@ is the record of which client each `vX.Y.Z` shipped (the Dockerfile itself still
 installs whatever's current at build time). The weekly `build.yml` cron keeps the
 rolling `:latest` / `:YYYYMMDD` tags fresh with Debian security patches.
 
-Don't hand-edit `CHANGELOG.md` or tags, release-please owns them.
+Don't hand-edit `CHANGELOG.md` or tags; release-please owns them.
