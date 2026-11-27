@@ -3,11 +3,11 @@
 [![Build](https://github.com/drumandbytes/nordvpn/actions/workflows/build.yml/badge.svg)](https://github.com/drumandbytes/nordvpn/actions/workflows/build.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A minimal, actively-rebuilt container image for the official [NordVPN](https://nordvpn.com/) Linux client — installed fresh from `repo.nordvpn.com`'s apt repo on every build, shipped on [distroless](https://github.com/GoogleContainerTools/distroless) with no shell, no package manager, and no systemd. Works as a regular VPN tunnel sidecar, a [Meshnet](https://meshnet.nordvpn.com/) node, or both at once — nothing is enabled unless you ask for it.
+A minimal, actively-rebuilt container image for the official [NordVPN](https://nordvpn.com/) Linux client, installed fresh from `repo.nordvpn.com`'s apt repo on every build, shipped on [distroless](https://github.com/GoogleContainerTools/distroless) with no shell, no package manager, and no systemd. Works as a regular VPN tunnel sidecar, a [Meshnet](https://meshnet.nordvpn.com/) node, or both at once, nothing is enabled unless you ask for it.
 
 ## Why this exists
 
-The most widely used community image, [`bubuntux/nordvpn`](https://github.com/bubuntux/nordvpn) (about 800 stars), is archived and its README says the repository is not maintained (as of November 2026). The Meshnet-specific images, [`MattsTechInfo/Meshnet`](https://github.com/MattsTechInfo/Meshnet) and [`DPflasterer/nordvpn-meshnet`](https://github.com/DPflasterer/nordvpn-meshnet), were last updated in February and August 2025. There's nothing complex to the client itself — install the official `nordvpn` package, run `nordvpnd` in the foreground instead of under systemd, drive it with the CLI — so this image just does that, and a weekly GitHub Actions build keeps it tracking whatever's current in NordVPN's `stable` apt channel.
+The most widely used community image, [`bubuntux/nordvpn`](https://github.com/bubuntux/nordvpn) (about 800 stars), is archived and its README says the repository is not maintained (as of November 2026). The Meshnet-specific images, [`MattsTechInfo/Meshnet`](https://github.com/MattsTechInfo/Meshnet) and [`DPflasterer/nordvpn-meshnet`](https://github.com/DPflasterer/nordvpn-meshnet), were last updated in February and August 2025. There's nothing complex to the client itself, install the official `nordvpn` package, run `nordvpnd` in the foreground instead of under systemd, drive it with the CLI, so this image just does that, and a weekly GitHub Actions build keeps it tracking whatever's current in NordVPN's `stable` apt channel.
 
 How it differs:
 
@@ -20,9 +20,9 @@ How it differs:
 
 Three-stage `Dockerfile`:
 
-1. **`deb-builder`** (`debian:trixie-slim`) — installs the real `nordvpn` package plus `iptables`/`iproute2`/`wireguard-tools`/`nftables`/`procps` via apt. Each of the latter two packages was added after something `nordvpnd` shells out to by bare name (PATH lookup) turned out to be missing — `nft` for firewall/routing setup during `connect`, `sysctl` for interface tuning, `ps` for norduserd's own process check — invisible until that specific code path was actually exercised.
-2. **`go-builder`** — compiles a small Go binary (`main.go`) that replaces the old shell `entrypoint.sh`/`healthcheck.sh`. Distroless has no shell at all, so the entrypoint has to be a real binary.
-3. **Final stage** — `gcr.io/distroless/base-debian13`: no apt, no shell, no package manager. Just the specific binaries and shared libraries this needs, `COPY`'d in explicitly from `deb-builder` (the exact file list came from inspecting the real package with `dpkg -L nordvpn` and each binary's actual dependency graph with `ldd` — not guessed), plus the compiled entrypoint from `go-builder`.
+1. **`deb-builder`** (`debian:trixie-slim`), installs the real `nordvpn` package plus `iptables`/`iproute2`/`wireguard-tools`/`nftables`/`procps` via apt. Each of the latter two packages was added after something `nordvpnd` shells out to by bare name (PATH lookup) turned out to be missing, `nft` for firewall/routing setup during `connect`, `sysctl` for interface tuning, `ps` for norduserd's own process check, invisible until that specific code path was actually exercised.
+2. **`go-builder`**: compiles a small Go binary (`main.go`) that replaces the old shell `entrypoint.sh`/`healthcheck.sh`. Distroless has no shell at all, so the entrypoint has to be a real binary.
+3. **Final stage**: `gcr.io/distroless/base-debian13`: no apt, no shell, no package manager. Just the specific binaries and shared libraries this needs, `COPY`'d in explicitly from `deb-builder` (the exact file list came from inspecting the real package with `dpkg -L nordvpn` and each binary's actual dependency graph with `ldd`, not guessed), plus the compiled entrypoint from `go-builder`.
 
 Net effect: ~40% smaller image, and a meaningfully smaller CVE surface than the full Debian image, since most of Debian's own userland (and its steady stream of base-package CVEs) never makes it into the final image at all.
 
@@ -135,9 +135,9 @@ volumes:
       claimName: nordvpn-state
 ```
 
-Put other containers in the same Pod spec to share this one's network — containers in a Pod share a network namespace natively, no extra config needed.
+Put other containers in the same Pod spec to share this one's network, containers in a Pod share a network namespace natively, no extra config needed.
 
-The host kernel needs iptables/netfilter modules available — the NordVPN client uses `iptables` internally to route and firewall its traffic.
+The host kernel needs iptables/netfilter modules available, the NordVPN client uses `iptables` internally to route and firewall its traffic.
 
 **Container sysctls.** Connecting makes `nordvpnd` write `net.ipv6.conf.all.disable_ipv6=1` and `net.ipv4.conf.all.arp_ignore=1` (Meshnet also `net.ipv4.conf.all.rp_filter=2`), and it aborts the connect if a write fails. `/proc/sys` is read-only in unprivileged containers, even for a write that changes nothing, so without help `NORDVPN_CONNECT` fails with `sysctl: permission denied`. The image's `sysctl` wrapper accepts a write whose value is already in place, so preset the values at container start: `--sysctl net.ipv6.conf.all.disable_ipv6=1 --sysctl net.ipv4.conf.all.arp_ignore=1` as in the examples above (`rp_filter` is already 2 by default on Docker). In Kubernetes these go in `securityContext.sysctls`, which needs the kubelet to allow them (`--allowed-unsafe-sysctls=net.ipv6.conf.all.*,net.ipv4.conf.all.*`). `securityContext.privileged: true` also works, without presets. If you'd rather not preset `arp_ignore`, `NORDVPN_SET="arp-ignore off"` skips that write, at the cost of that protection.
 
@@ -179,4 +179,4 @@ Built with the help of an AI coding assistant (Claude). I review and test what g
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Not affiliated with or endorsed by Nord Security.
+MIT, see [LICENSE](LICENSE). Not affiliated with or endorsed by Nord Security.

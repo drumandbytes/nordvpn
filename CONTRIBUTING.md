@@ -33,4 +33,4 @@ is the record of which client each `vX.Y.Z` shipped (the Dockerfile itself still
 installs whatever's current at build time). The weekly `build.yml` cron keeps the
 rolling `:latest` / `:YYYYMMDD` tags fresh with Debian security patches.
 
-Don't hand-edit `CHANGELOG.md` or tags — release-please owns them.
+Don't hand-edit `CHANGELOG.md` or tags, release-please owns them.
