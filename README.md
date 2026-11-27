@@ -3,11 +3,11 @@
 [![Build](https://github.com/drumandbytes/nordvpn/actions/workflows/build.yml/badge.svg)](https://github.com/drumandbytes/nordvpn/actions/workflows/build.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A minimal, actively-rebuilt container image for the official [NordVPN](https://nordvpn.com/) Linux client, installed fresh from `repo.nordvpn.com`'s apt repo on every build, shipped on [distroless](https://github.com/GoogleContainerTools/distroless) with no shell, no package manager, and no systemd. Works as a regular VPN tunnel sidecar, a [Meshnet](https://meshnet.nordvpn.com/) node, or both at once, nothing is enabled unless you ask for it.
+A minimal, actively-rebuilt container image for the official [NordVPN](https://nordvpn.com/) Linux client, installed fresh from `repo.nordvpn.com`'s apt repo on every build, shipped on [distroless](https://github.com/GoogleContainerTools/distroless) with no shell, no package manager, and no systemd. Works as a regular VPN tunnel sidecar, a [Meshnet](https://meshnet.nordvpn.com/) node, or both at once; nothing is enabled unless you ask for it.
 
 ## Why this exists
 
-The most widely used community image, [`bubuntux/nordvpn`](https://github.com/bubuntux/nordvpn) (about 800 stars), is archived and its README says the repository is not maintained (as of November 2026). The Meshnet-specific images, [`MattsTechInfo/Meshnet`](https://github.com/MattsTechInfo/Meshnet) and [`DPflasterer/nordvpn-meshnet`](https://github.com/DPflasterer/nordvpn-meshnet), were last updated in February and August 2025. There's nothing complex to the client itself, install the official `nordvpn` package, run `nordvpnd` in the foreground instead of under systemd, drive it with the CLI, so this image just does that, and a weekly GitHub Actions build keeps it tracking whatever's current in NordVPN's `stable` apt channel.
+The most widely used community image, [`bubuntux/nordvpn`](https://github.com/bubuntux/nordvpn) (about 800 stars), is archived and its README says the repository is not maintained (as of November 2026). The Meshnet-specific images, [`MattsTechInfo/Meshnet`](https://github.com/MattsTechInfo/Meshnet) and [`DPflasterer/nordvpn-meshnet`](https://github.com/DPflasterer/nordvpn-meshnet), were last updated in February and August 2025. There's nothing complex to the client itself, install the official `nordvpn` package, run `nordvpnd` in the foreground instead of under systemd, drive it with the CLI; so this image just does that, and a weekly GitHub Actions build keeps it tracking whatever's current in NordVPN's `stable` apt channel.
 
 How it differs:
 
