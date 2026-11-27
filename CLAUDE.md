@@ -14,7 +14,7 @@ docker build -t nordvpn .
 
 CI (`validate.yml`) runs `drumandbytes/reusable-actions` go-ci + a smoke test that boots the built image with no config and checks it doesn't crash. `validate.yml` also runs `scripts/cli-check.sh` (every CLI verb the entrypoint/README uses still exists; amd64 + arm64) and, as its own workflow `live-test.yml`, `scripts/live-test.sh` (real login, NordLynx/OpenVPN UDP+TCP connect, Meshnet). It runs on push to main, nightly and by hand, never on PRs, and it gates publishing: `build.yml` (release tags) waits for a green Live test run on the tagged commit (the push-to-main run; the tag ref itself can't read the Environment secret), so a release image only ships after one (a failed one leaves the tag unpublished; re-run the Build run once fixed): `NORDVPN_TOKEN` lives in the `live-test` Environment, restricted to `main`, so PR code can't read it. A broken client release is therefore caught after merge, not before. A major client bump makes `upstream-check` open a draft PR so it can't auto-merge.
 
-The Trivy image scan is its own workflow (`security.yml`: PRs plus a weekly run on main), kept out of `validate.yml` so a CVE can't block every Dependabot merge, auto-merge gates on Validate.
+The Trivy image scan is its own workflow (`security.yml`: PRs plus a weekly run on main), kept out of `validate.yml` so a CVE can't block every Dependabot merge; auto-merge gates on Validate.
 
 ## `upstream.lock`, read this before touching it
 
@@ -30,6 +30,6 @@ The Dockerfile pins almost nothing on purpose, `nordvpn`, `iptables`, `iproute2`
 
 ## Conventions
 
-- Commits: Conventional Commits (`fix(deps):`, `feat:`, `chore(ci):`), release-please reads them for versioning/`CHANGELOG.md`. No `Co-Authored-By` trailers.
+- Commits: Conventional Commits (`fix(deps):`, `feat:`, `chore(ci):`); release-please reads them for versioning/`CHANGELOG.md`. No `Co-Authored-By` trailers.
 - `main` stays releasable; release-please and upstream-check PRs auto-merge via `drumandbytes/reusable-actions`.
 - Every published image carries a signed SLSA provenance attestation (see README's "Verifying the image").
